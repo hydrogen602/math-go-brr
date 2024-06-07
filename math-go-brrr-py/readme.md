@@ -1,0 +1,4 @@
+
+```sh
+maturin develop
+```

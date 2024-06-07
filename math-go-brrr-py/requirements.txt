@@ -1,0 +1,3 @@
+ast2json==0.3
+# Editable install with no version control (math-go-brrr-py==0.1.0)
+-e /Users/Jonathan/Documents/GitHub/Rust/math-go-brrr-py
