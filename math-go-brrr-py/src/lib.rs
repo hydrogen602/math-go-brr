@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
 use anyhow::anyhow;
@@ -7,7 +7,6 @@ use math_go_brrr::{
     llvm::{LLVMContext, LLVM},
     JitFunction,
 };
-use once_cell::sync::OnceCell;
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use util::{Ext, Intermediary};
 
@@ -18,6 +17,7 @@ pub fn bin_op(a: i64, b: i64) -> PyResult<i64> {
     Ok(a + b)
 }
 
+#[allow(dead_code)]
 struct ContextAndLLVM {
     /// actually has a lifetime of 'context. It must be declared before context so it gets dropped first
     llvm: LLVM<'static>,
