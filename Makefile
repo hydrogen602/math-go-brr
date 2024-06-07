@@ -1,4 +1,3 @@
 
 run:
-	maturin develop
-	python test.py
+	$(MAKE) -C math-go-brrr-py run

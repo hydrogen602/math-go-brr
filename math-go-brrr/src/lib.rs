@@ -1,12 +1,15 @@
 use anyhow::{anyhow, bail};
+pub use inkwell::execution_engine::JitFunction;
+use python_ast::Function;
 use python_ast_json::PyJsonNode;
 
 pub mod ast_to_llvm;
+pub mod llvm;
 pub mod python_ast;
 pub mod python_ast_json;
-pub mod util;
+mod util;
 
-pub fn brrr(py_ast_json: &str) -> anyhow::Result<()> {
+pub fn parse(py_ast_json: &str) -> anyhow::Result<Function> {
     let py_ast = python_ast_json::PyJsonNode::load_from_str(py_ast_json)?;
     let func = python_ast::find_functions_in_module(py_ast)
         .into_iter()
@@ -20,9 +23,7 @@ pub fn brrr(py_ast_json: &str) -> anyhow::Result<()> {
 
     let func = python_ast::translate_func(func)?;
 
-    ast_to_llvm::func_to_llvm(func)?;
-
-    Ok(())
+    Ok(func)
 }
 
 // pub fn func_to_llvm(func: Function) -> anyhow::Result<()> {

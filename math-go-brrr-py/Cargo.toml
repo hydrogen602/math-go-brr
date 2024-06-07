@@ -12,3 +12,5 @@ crate-type = ["cdylib"]
 pyo3 = "0.18.1"
 math-go-brrr = { path = "../math-go-brrr" }
 anyhow = "1.0.86"
+once_cell = "1.19.0"
+aliasable = "0.1.3"

@@ -21,9 +21,9 @@ use crate::{
 /// do `unsafe` operations internally.
 type SumFunc = unsafe extern "C" fn(i64, i64) -> i64;
 
-struct CodeGen<'ctx> {
+pub struct CodeGen<'ctx, 'm> {
     context: &'ctx Context,
-    module: Module<'ctx>,
+    module: &'m Module<'ctx>,
     builder: Builder<'ctx>,
     execution_engine: ExecutionEngine<'ctx>,
 
@@ -32,15 +32,28 @@ struct CodeGen<'ctx> {
     tmp_var_counter: u64,
 }
 
-impl<'ctx> CodeGen<'ctx> {
+impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     fn new_tmp_var_name(&mut self) -> String {
         let name = format!("_tmp_var_{}", self.tmp_var_counter);
         self.tmp_var_counter += 1;
         name
     }
-}
 
-impl<'ctx> CodeGen<'ctx> {
+    pub fn new(
+        context: &'ctx Context,
+        module: &'m Module<'ctx>,
+        execution_engine: ExecutionEngine<'ctx>,
+    ) -> Self {
+        Self {
+            context,
+            module,
+            builder: context.create_builder(),
+            execution_engine,
+            variables: HashMap::new(),
+            tmp_var_counter: 0,
+        }
+    }
+
     fn jit_compile_expr(&mut self, val: Expression) -> anyhow::Result<IntValue<'ctx>> {
         match val {
             Expression::BinOp(lhs, BinOp::Add, rhs) => {
@@ -100,7 +113,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn jit_compile_function(&mut self, func: Function) -> anyhow::Result<FunctionValue<'ctx>> {
+    pub fn jit_compile_function(&mut self, func: Function) -> anyhow::Result<FunctionValue<'ctx>> {
         let i64_type = self.context.i64_type();
 
         let Function { name, args, body } = func;
@@ -126,13 +139,13 @@ impl<'ctx> CodeGen<'ctx> {
 
 pub fn func_to_llvm(func: Function) -> anyhow::Result<()> {
     let context = Context::create();
-    let module = context.create_module("test1");
+    let module = context.create_module("test_go_brrr");
     let execution_engine = module
         .create_jit_execution_engine(OptimizationLevel::None)
         .err_convert()?;
     let mut codegen = CodeGen {
         context: &context,
-        module,
+        module: &module,
         builder: context.create_builder(),
         execution_engine,
         variables: HashMap::new(),

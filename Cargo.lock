@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "aliasable"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "250f629c0161ad8107cf89319e990051fae62832fd343083bea452d93e2205fd"
+
+[[package]]
 name = "anyhow"
 version = "1.0.86"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -125,8 +131,10 @@ dependencies = [
 name = "math-go-brrr-py"
 version = "0.1.0"
 dependencies = [
+ "aliasable",
  "anyhow",
  "math-go-brrr",
+ "once_cell",
  "pyo3",
 ]
 
