@@ -6,3 +6,12 @@ The idea is that when a function is just basic math, there's no real need to dea
 
 Now Cyton and maturin/PyO3 already do this, but the idea is to not require any compilation step or make the user interact with anything that isn't python, so that it is near seamless to the user (well there is always the restriction that llvm is statically typed, plus any such function can only contain integer / float operations).
 
+---
+
+```python
+@brrr
+def bar(a, b):
+    return a + b
+```
+
+Here, `brrr` takes `bar`, gets and parses its source, and then generates an llvm function that does the `add` instructions on two i64s, and then creates a python-callable to replace `bar` that calls the llvm JIT engine.
