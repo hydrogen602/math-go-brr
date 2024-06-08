@@ -1,25 +1,21 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use inkwell::{
     builder::Builder,
     context::Context,
-    execution_engine::{ExecutionEngine, JitFunction},
+    execution_engine::ExecutionEngine,
     module::Module,
     values::{FunctionValue, IntValue},
-    OptimizationLevel,
 };
 
-use crate::{
-    python_ast::{Arg, BinOp, Expression, Function, Statement},
-    util::Ext,
-};
+use crate::parser::python_ast::{Arg, BinOp, Expression, Function, Statement};
 
-/// Convenience type alias for the `sum` function.
-///
-/// Calling this is innately `unsafe` because there's no guarantee it doesn't
-/// do `unsafe` operations internally.
-type SumFunc = unsafe extern "C" fn(i64, i64) -> i64;
+// /// Convenience type alias for the `sum` function.
+// ///
+// /// Calling this is innately `unsafe` because there's no guarantee it doesn't
+// /// do `unsafe` operations internally.
+// type SumFunc = unsafe extern "C" fn(i64, i64) -> i64;
 
 pub struct CodeGen<'ctx, 'm> {
     context: &'ctx Context,
@@ -133,41 +129,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
         self.jit_compile_body(body)?;
 
+        eprintln!(">>>");
+        function.print_to_stderr();
+        eprintln!("<<<");
+
         Ok(function)
     }
-}
-
-pub fn func_to_llvm(func: Function) -> anyhow::Result<()> {
-    let context = Context::create();
-    let module = context.create_module("test_go_brrr");
-    let execution_engine = module
-        .create_jit_execution_engine(OptimizationLevel::None)
-        .err_convert()?;
-    let mut codegen = CodeGen {
-        context: &context,
-        module: &module,
-        builder: context.create_builder(),
-        execution_engine,
-        variables: HashMap::new(),
-        tmp_var_counter: 0,
-    };
-
-    let f_name = func.name.clone();
-
-    codegen.jit_compile_function(func)?;
-
-    let Some(f): Option<JitFunction<SumFunc>> =
-        (unsafe { codegen.execution_engine.get_function(&f_name).ok() })
-    else {
-        bail!("Function not found")
-    };
-
-    let a = 1i64;
-    let b = 2i64;
-
-    let result = unsafe { f.call(a, b) };
-
-    println!("{} + {} = {}", a, b, result);
-
-    Ok(())
 }

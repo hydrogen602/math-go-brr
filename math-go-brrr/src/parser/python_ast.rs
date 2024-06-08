@@ -1,6 +1,6 @@
 use anyhow::{bail, ensure};
 
-use crate::python_ast_json::PyJsonNode;
+use super::python_ast_json::PyJsonNode;
 
 /// Stricter version (only what we can parse)
 pub struct Function {

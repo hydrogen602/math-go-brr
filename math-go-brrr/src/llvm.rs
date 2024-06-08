@@ -6,7 +6,7 @@ use inkwell::{
     OptimizationLevel,
 };
 
-use crate::{ast_to_llvm::CodeGen, python_ast::Function, util::Ext};
+use crate::{ast_to_llvm::CodeGen, parser::python_ast::Function, util::Ext};
 
 #[derive(Debug)]
 pub struct LLVMContext(Context);
