@@ -21,7 +21,6 @@ pub struct CodeGen<'ctx, 'm> {
     context: &'ctx Context,
     module: &'m Module<'ctx>,
     builder: Builder<'ctx>,
-    execution_engine: ExecutionEngine<'ctx>,
 
     variables: HashMap<String, IntValue<'ctx>>,
 
@@ -35,16 +34,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         name
     }
 
-    pub fn new(
-        context: &'ctx Context,
-        module: &'m Module<'ctx>,
-        execution_engine: ExecutionEngine<'ctx>,
-    ) -> Self {
+    pub fn new(context: &'ctx Context, module: &'m Module<'ctx>) -> Self {
         Self {
             context,
             module,
             builder: context.create_builder(),
-            execution_engine,
             variables: HashMap::new(),
             tmp_var_counter: 0,
         }

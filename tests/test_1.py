@@ -4,14 +4,14 @@ from math_go_brrr_py import brrr
 
 def test_one():
     @brrr
-    def foo(a, b):
+    def foo(a: int, b: int) -> int:
         return a
 
     assert not isinstance(foo, FunctionType)
     assert foo(5, 8) == 5
 
     @brrr
-    def foo(a, b):
+    def foo(a: int, b: int) -> int:
         return b
 
     assert not isinstance(foo, FunctionType)
@@ -20,14 +20,14 @@ def test_one():
 
 def test_two():
     @brrr
-    def bar(a, b):
+    def bar(a: int, b: int) -> int:
         return a - b
 
     assert not isinstance(bar, FunctionType)
     assert bar(5, 8) == -3
 
     @brrr
-    def bar(a, b):
+    def bar(a: int, b: int) -> int:
         return a + b
 
     assert not isinstance(bar, FunctionType)
@@ -36,7 +36,7 @@ def test_two():
 
 def test_more():
     @brrr
-    def bar(a, b):
+    def bar(a: int, b: int) -> int:
         return a + b - b - b
 
     assert not isinstance(bar, FunctionType)

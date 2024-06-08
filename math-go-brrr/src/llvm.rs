@@ -38,7 +38,7 @@ impl<'ctx> LLVM<'ctx> {
     }
 
     fn new_codegen<'m>(&'m self) -> CodeGen<'ctx, 'm> {
-        CodeGen::new(self.context, &self.module, self.execution_engine.clone())
+        CodeGen::new(self.context, &self.module)
     }
 
     pub fn compile_func(
