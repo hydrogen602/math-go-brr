@@ -25,6 +25,7 @@ pub enum Expression {
 
 pub enum BinOp {
     Add,
+    Sub,
 }
 
 pub fn find_functions_in_module(module: PyJsonNode) -> Vec<PyJsonNode> {
@@ -70,6 +71,7 @@ pub fn translate_expression(expr: PyJsonNode) -> anyhow::Result<Expression> {
             Box::new(translate_expression(*left)?),
             match *op {
                 PyJsonNode::Add => BinOp::Add,
+                PyJsonNode::Sub => BinOp::Sub,
                 _ => bail!("Unsupported binop: {:?}", op),
             },
             Box::new(translate_expression(*right)?),

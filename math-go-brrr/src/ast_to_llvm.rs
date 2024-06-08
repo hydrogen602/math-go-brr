@@ -52,13 +52,17 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
     fn jit_compile_expr(&mut self, val: Expression) -> anyhow::Result<IntValue<'ctx>> {
         match val {
-            Expression::BinOp(lhs, BinOp::Add, rhs) => {
+            Expression::BinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
                 let rhs = self.jit_compile_expr(*rhs)?;
                 let name = self.new_tmp_var_name();
 
-                Ok(self.builder.build_int_add(lhs, rhs, &name)?)
+                Ok(match op {
+                    BinOp::Add => self.builder.build_int_add(lhs, rhs, &name)?,
+                    BinOp::Sub => self.builder.build_int_sub(lhs, rhs, &name)?,
+                })
             }
+
             Expression::Name(name) => {
                 // only i64 for now. load var
                 Ok(self
@@ -109,7 +113,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         Ok(())
     }
 
-    pub fn jit_compile_function(&mut self, func: Function) -> anyhow::Result<FunctionValue<'ctx>> {
+    pub fn jit_compile_function(
+        &mut self,
+        func: Function,
+        compile_opts: super::CompileOpts,
+    ) -> anyhow::Result<FunctionValue<'ctx>> {
         let i64_type = self.context.i64_type();
 
         let Function { name, args, body } = func;
@@ -129,9 +137,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
         self.jit_compile_body(body)?;
 
-        eprintln!(">>>");
-        function.print_to_stderr();
-        eprintln!("<<<");
+        if compile_opts.dump_ir {
+            eprintln!("");
+            eprintln!(">>> IR for function {}", name);
+            function.print_to_stderr();
+            eprintln!("<<<");
+            eprintln!("");
+        }
 
         Ok(function)
     }

@@ -25,37 +25,7 @@ pub fn parse(py_ast_json: &str) -> anyhow::Result<Function> {
     Ok(func)
 }
 
-// pub fn func_to_llvm(func: Function) -> anyhow::Result<()> {
-//   let context = Context::create();
-//   let module = context.create_module("test1");
-//   let execution_engine = module
-//       .create_jit_execution_engine(OptimizationLevel::None)
-//       .err_convert()?;
-//   let mut codegen = CodeGen {
-//       context: &context,
-//       module,
-//       builder: context.create_builder(),
-//       execution_engine,
-//       variables: HashMap::new(),
-//       tmp_var_counter: 0,
-//   };
-
-//   let f_name = func.name.clone();
-
-//   codegen.jit_compile_function(func)?;
-
-//   let Some(f): Option<JitFunction<SumFunc>> =
-//       (unsafe { codegen.execution_engine.get_function(&f_name).ok() })
-//   else {
-//       bail!("Function not found")
-//   };
-
-//   let a = 1i64;
-//   let b = 2i64;
-
-//   let result = unsafe { f.call(a, b) };
-
-//   println!("{} + {} = {}", a, b, result);
-
-//   Ok(())
-// }
+#[derive(Debug, Clone, Copy)]
+pub struct CompileOpts {
+    pub dump_ir: bool,
+}

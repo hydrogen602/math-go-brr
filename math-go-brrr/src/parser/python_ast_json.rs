@@ -59,6 +59,7 @@ pub enum PyJsonNode {
         location: Location,
     },
     Add,
+    Sub,
     Name {
         id: String,
         ctx: Box<PyJsonNode>,

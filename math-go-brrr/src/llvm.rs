@@ -27,7 +27,7 @@ impl<'ctx> LLVM<'ctx> {
     pub fn new(context: &'ctx LLVMContext) -> anyhow::Result<Self> {
         let module = context.0.create_module("test_go_brrr");
         let execution_engine = module
-            .create_jit_execution_engine(OptimizationLevel::None)
+            .create_jit_execution_engine(OptimizationLevel::Default)
             .err_convert()?;
 
         Ok(Self {
@@ -41,10 +41,14 @@ impl<'ctx> LLVM<'ctx> {
         CodeGen::new(self.context, &self.module, self.execution_engine.clone())
     }
 
-    pub fn compile_func(&self, func: Function) -> anyhow::Result<()> {
+    pub fn compile_func(
+        &self,
+        func: Function,
+        compile_opts: super::CompileOpts,
+    ) -> anyhow::Result<()> {
         let mut codegen = self.new_codegen();
 
-        codegen.jit_compile_function(func)?;
+        codegen.jit_compile_function(func, compile_opts)?;
 
         Ok(())
     }
