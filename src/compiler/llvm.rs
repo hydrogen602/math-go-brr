@@ -1,12 +1,8 @@
-use anyhow::anyhow;
 use inkwell::{
-    context::Context,
-    execution_engine::{ExecutionEngine, UnsafeFunctionPointer},
-    module::Module,
-    OptimizationLevel,
+    context::Context, execution_engine::ExecutionEngine, module::Module, OptimizationLevel,
 };
 
-use crate::{ast_to_llvm::CodeGen, parser::python_ast::Function, util::Ext};
+use super::{ast_to_llvm::CodeGen, parser::python_ast::Function, util::Ext};
 
 #[derive(Debug)]
 pub struct LLVMContext(Context);
@@ -51,15 +47,5 @@ impl<'ctx> LLVM<'ctx> {
         codegen.jit_compile_function(func, compile_opts)?;
 
         Ok(())
-    }
-
-    pub fn get_func<F: UnsafeFunctionPointer>(
-        &self,
-        name: &str,
-    ) -> anyhow::Result<inkwell::execution_engine::JitFunction<F>> {
-        let f = unsafe { self.execution_engine.get_function(name).ok() }
-            .ok_or_else(|| anyhow!("Function not found"))?;
-
-        Ok(f)
     }
 }

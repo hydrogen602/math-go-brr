@@ -4,18 +4,11 @@ use anyhow::anyhow;
 use inkwell::{
     builder::Builder,
     context::Context,
-    execution_engine::ExecutionEngine,
     module::Module,
     values::{FunctionValue, IntValue},
 };
 
-use crate::parser::python_ast::{Arg, BinOp, Expression, Function, Statement};
-
-// /// Convenience type alias for the `sum` function.
-// ///
-// /// Calling this is innately `unsafe` because there's no guarantee it doesn't
-// /// do `unsafe` operations internally.
-// type SumFunc = unsafe extern "C" fn(i64, i64) -> i64;
+use super::parser::python_ast::{Arg, BinOp, Expression, Function, Statement};
 
 pub struct CodeGen<'ctx, 'm> {
     context: &'ctx Context,

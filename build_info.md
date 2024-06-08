@@ -1,3 +1,10 @@
+
+```sh
+maturin develop
+```
+
+---
+
 If you need to have llvm@17 first in your PATH, run:
   echo 'export PATH="/opt/homebrew/opt/llvm@17/bin:$PATH"' >> ~/.zshrc
 

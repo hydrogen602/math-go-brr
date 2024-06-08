@@ -1,4 +1,4 @@
-from math_go_brrr_py import brrr
+from math_go_brrr import brrr
 import pytest
 
 

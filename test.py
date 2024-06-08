@@ -1,5 +1,5 @@
 from types import FunctionType
-from math_go_brrr_py import brrr
+from math_go_brrr import brrr
 
 # def brrr(f):
 #     import inspect, ast, ast2json, json, math_go_brrr_py

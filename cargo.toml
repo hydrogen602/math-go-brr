@@ -1,3 +1,0 @@
-[workspace]
-members = ["math-go-brrr", "math-go-brrr-py"]
-resolver = "2"

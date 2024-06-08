@@ -2,14 +2,14 @@ use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
 use anyhow::anyhow;
-use math_go_brrr::{
-    self,
+use compiler::{
     llvm::{LLVMContext, LLVM},
     JitFunction,
 };
 use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use util::{Ext, Intermediary};
 
+mod compiler;
 mod util;
 
 #[allow(dead_code)]
@@ -51,7 +51,7 @@ impl CompileOpts {
     }
 }
 
-impl From<CompileOpts> for math_go_brrr::CompileOpts {
+impl From<CompileOpts> for compiler::CompileOpts {
     fn from(opts: CompileOpts) -> Self {
         let CompileOpts { dump_ir } = opts;
         Self { dump_ir }
@@ -61,7 +61,7 @@ impl From<CompileOpts> for math_go_brrr::CompileOpts {
 #[pyfunction]
 pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
     let inner = || -> Result<ContextAndLLVM, Intermediary> {
-        let func = math_go_brrr::parse(src)?;
+        let func = compiler::parse(src)?;
         let func_name = func.name.clone();
 
         let context = AliasableBox::from_unique(Box::new(LLVMContext::new()));
@@ -112,7 +112,7 @@ unsafe impl Send for Func {}
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn math_go_brrr_py(_py: Python, m: &PyModule) -> PyResult<()> {
+fn math_go_brrr(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(take_source, m)?)?;
     m.add_class::<CompileOpts>()?;
     Ok(())

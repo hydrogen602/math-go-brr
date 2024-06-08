@@ -1,6 +1,7 @@
 
 run:
-	$(MAKE) -C math-go-brrr-py run
+	maturin develop
+	python test.py
 
 test:
 	pytest tests
