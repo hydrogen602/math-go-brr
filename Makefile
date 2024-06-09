@@ -1,7 +1,10 @@
+.PHONY: run build-dev test
 
-run:
-	maturin develop
+run: build-dev
 	python test.py
 
-test:
+build-dev:
+	maturin develop
+
+test: build-dev
 	pytest tests

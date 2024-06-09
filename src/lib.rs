@@ -99,6 +99,7 @@ pub struct Func {
 
 #[pymethods]
 impl Func {
+    #[pyo3(signature = (*py_args))]
     fn __call__(&self, py_args: &Bound<'_, PyTuple>) -> PyResult<i64> {
         let lock = self
             .llvm
