@@ -2,11 +2,16 @@ use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
 use anyhow::anyhow;
+use pyo3::{
+    exceptions::{PyRuntimeError, PyTypeError},
+    prelude::*,
+    types::PyTuple,
+};
+
 use compiler::{
     llvm::{LLVMContext, LLVM},
     JitFunction,
 };
-use pyo3::{exceptions::PyRuntimeError, prelude::*};
 use util::{Ext, Intermediary};
 
 mod compiler;
@@ -94,12 +99,28 @@ pub struct Func {
 
 #[pymethods]
 impl Func {
-    fn __call__(&self, a: i64, b: i64) -> PyResult<i64> {
-        println!("MyClass has been called");
+    fn __call__(&self, py_args: &Bound<'_, PyTuple>) -> PyResult<i64> {
         let lock = self
             .llvm
             .lock()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        // TODO: improve with SmallVec<[i64; 5]>
+        let args: Vec<i64> = match py_args
+            .into_iter()
+            .map(|py_arg| FromPyObject::extract_bound(&py_arg))
+            .collect()
+        {
+            Ok(args) => args,
+            Err(e) => return Err(PyTypeError::new_err(e.to_string())),
+        };
+
+        // FIXME: make this be able to take any number of arguments
+        if args.len() != 2 {
+            return Err(PyTypeError::new_err("Expected 2 arguments"));
+        }
+        let a = args[0];
+        let b = args[1];
 
         let f = lock.get_func().err_convert()?;
         let out = unsafe { f.call(a, b) };
@@ -112,7 +133,7 @@ unsafe impl Send for Func {}
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn math_go_brrr(_py: Python, m: &PyModule) -> PyResult<()> {
+fn math_go_brrr(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(take_source, m)?)?;
     m.add_class::<CompileOpts>()?;
     Ok(())
