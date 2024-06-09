@@ -8,7 +8,12 @@ use inkwell::{
     values::{FunctionValue, IntValue},
 };
 
-use super::parser::python_ast::{Arg, BinOp, Expression, Function, Statement};
+use crate::signature::Signature;
+
+use super::{
+    parser::python_ast::{Arg, BinOp, ConstantAST, ExpressionAST, FunctionAST, StatementAST},
+    ArgType,
+};
 
 pub struct CodeGen<'ctx, 'm> {
     context: &'ctx Context,
@@ -37,9 +42,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         }
     }
 
-    fn jit_compile_expr(&mut self, val: Expression) -> anyhow::Result<IntValue<'ctx>> {
+    fn jit_compile_expr(&mut self, val: ExpressionAST) -> anyhow::Result<IntValue<'ctx>> {
         match val {
-            Expression::BinOp(lhs, op, rhs) => {
+            ExpressionAST::BinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
                 let rhs = self.jit_compile_expr(*rhs)?;
                 let name = self.new_tmp_var_name();
@@ -49,8 +54,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     BinOp::Sub => self.builder.build_int_sub(lhs, rhs, &name)?,
                 })
             }
-
-            Expression::Name(name) => {
+            ExpressionAST::Name(name) => {
                 // only i64 for now. load var
                 Ok(self
                     .variables
@@ -58,12 +62,27 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     .cloned()
                     .ok_or_else(|| anyhow!("Unknown variable: {}", name))?)
             }
+            ExpressionAST::Constant(ConstantAST::I64(val)) => {
+                // idk about sign_extend, but we are passing in 64 bits.
+                // even though it says u64, it still does it signed
+                Ok(self.context.i64_type().const_int(val as u64, false))
+            }
+            ExpressionAST::UnaryOp(op, val) => {
+                let val = self.jit_compile_expr(*val)?;
+                let name = self.new_tmp_var_name();
+
+                Ok(match op {
+                    super::parser::python_ast::UnaryOp::USub => {
+                        self.builder.build_int_neg(val, &name)?
+                    }
+                })
+            }
         }
     }
 
-    fn jit_compile_stmt(&mut self, val: Statement) -> anyhow::Result<()> {
+    fn jit_compile_stmt(&mut self, val: StatementAST) -> anyhow::Result<()> {
         match val {
-            Statement::Return(val) => {
+            StatementAST::Return(val) => {
                 let val = match val {
                     Some(val) => self.jit_compile_expr(val)?,
                     None => self.context.i64_type().const_zero(),
@@ -76,7 +95,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         Ok(())
     }
 
-    fn jit_compile_body(&mut self, body: Vec<Statement>) -> anyhow::Result<()> {
+    fn jit_compile_body(&mut self, body: Vec<StatementAST>) -> anyhow::Result<()> {
         for stmt in body {
             self.jit_compile_stmt(stmt)?;
         }
@@ -102,19 +121,33 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
     pub fn jit_compile_function(
         &mut self,
-        func: Function,
+        func: FunctionAST,
         compile_opts: super::CompileOpts,
-    ) -> anyhow::Result<FunctionValue<'ctx>> {
+    ) -> anyhow::Result<(FunctionValue<'ctx>, Signature)> {
         let i64_type = self.context.i64_type();
 
-        let Function { name, args, body } = func;
+        let FunctionAST {
+            name,
+            args,
+            body,
+            return_type,
+        } = func;
 
-        let mut arg_type = vec![];
-        for _ in &args {
-            arg_type.push(i64_type.into());
+        let mut arg_types_llvm = vec![];
+        let mut arg_types = vec![];
+        for arg in &args {
+            arg_types_llvm.push(match arg.type_ {
+                ArgType::I64 => i64_type.into(),
+            });
+            arg_types.push(arg.type_)
         }
 
-        let fn_type = i64_type.fn_type(&arg_type, false);
+        let sig = Signature::new(arg_types, return_type);
+
+        let fn_type = match return_type {
+            ArgType::I64 => i64_type.fn_type(&arg_types_llvm, false),
+        };
+
         let function = self.module.add_function(&name, fn_type, None);
         let basic_block = self.context.append_basic_block(function, "entry");
 
@@ -132,6 +165,6 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             eprintln!("");
         }
 
-        Ok(function)
+        Ok((function, sig))
     }
 }

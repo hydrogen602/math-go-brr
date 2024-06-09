@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
 use anyhow::anyhow;
+use inkwell::execution_engine::UnsafeFunctionPointer;
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError},
     prelude::*,
@@ -9,34 +10,38 @@ use pyo3::{
 };
 
 use compiler::{
-    llvm::{LLVMContext, LLVM},
+    llvm::{LLVMJitContext, LLVMModule},
     JitFunction,
 };
 use util::{Ext, Intermediary};
 
 mod compiler;
+mod signature;
 mod util;
 
 #[allow(dead_code)]
 struct ContextAndLLVM {
     /// actually has a lifetime of 'context. It must be declared before context so it gets dropped first
-    llvm: LLVM<'static>,
+    module: LLVMModule<'static>,
     /// safety: we must never move out of this box as long as llvm is alive
-    context: AliasableBox<LLVMContext>,
+    context: AliasableBox<LLVMJitContext>,
     func_name: String,
+    signature: signature::Signature,
 }
 
 impl ContextAndLLVM {
-    pub fn get_func(&self) -> anyhow::Result<JitFunction<unsafe extern "C" fn(i64, i64) -> i64>> {
+    // T like unsafe extern "C" fn() -> i64
+    pub fn get_function<F>(&self) -> anyhow::Result<JitFunction<F>>
+    where
+        F: UnsafeFunctionPointer,
+    {
         let f = unsafe {
-            self.llvm
+            self.module
                 .execution_engine
                 .get_function(&self.func_name)
                 .ok()
         }
-        .ok_or_else(|| anyhow!("Function not found"))?;
-
-        println!("Function found");
+        .ok_or_else(|| anyhow!("Function {} not found", self.func_name))?;
 
         Ok(f)
     }
@@ -69,20 +74,18 @@ pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
         let func = compiler::parse(src)?;
         let func_name = func.name.clone();
 
-        let context = AliasableBox::from_unique(Box::new(LLVMContext::new()));
-        // extend the lifetime of context to 'static
-        let llvm: LLVM<'static> = unsafe { std::mem::transmute(LLVM::new(&context)?) };
-        let context_and_llvm = ContextAndLLVM {
-            llvm,
+        let context = AliasableBox::from_unique(Box::new(LLVMJitContext::new()));
+        let module = LLVMModule::new(&context, "test_go_brrr")?;
+
+        let signature = module.compile_func(func, compile_opts.into())?;
+
+        // extend the lifetime of 'ctx to 'static
+        Ok(ContextAndLLVM {
+            module: unsafe { std::mem::transmute(module) },
             context,
             func_name,
-        };
-
-        context_and_llvm
-            .llvm
-            .compile_func(func, compile_opts.into())?;
-
-        Ok(context_and_llvm)
+            signature,
+        })
     };
 
     let ctx = inner()?;
@@ -116,15 +119,8 @@ impl Func {
             Err(e) => return Err(PyTypeError::new_err(e.to_string())),
         };
 
-        // FIXME: make this be able to take any number of arguments
-        if args.len() != 2 {
-            return Err(PyTypeError::new_err("Expected 2 arguments"));
-        }
-        let a = args[0];
-        let b = args[1];
+        let out = unsafe { lock.signature.call(&lock, &args) }?;
 
-        let f = lock.get_func().err_convert()?;
-        let out = unsafe { f.call(a, b) };
         Ok(out)
     }
 }

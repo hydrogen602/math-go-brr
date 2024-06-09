@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail};
 pub use inkwell::execution_engine::JitFunction;
-use parser::python_ast::Function;
+use parser::python_ast::FunctionAST;
 use parser::python_ast_json::PyJsonNode;
 
 mod ast_to_llvm;
@@ -8,7 +8,9 @@ pub mod llvm;
 mod parser;
 mod util;
 
-pub fn parse(py_ast_json: &str) -> anyhow::Result<Function> {
+pub use parser::python_ast::{ArgType, TypeToArg};
+
+pub fn parse(py_ast_json: &str) -> anyhow::Result<FunctionAST> {
     let py_ast = PyJsonNode::load_from_str(py_ast_json)?;
     let func = parser::python_ast::find_functions_in_module(py_ast)
         .into_iter()

@@ -29,6 +29,7 @@ def brrr(f: Optional[Callable] = None, /, *, dump_ir: bool = False):
 
         sig = inspect.signature(f)
         params = sig.parameters
+
         for p in params:
             annotation = anno.get(p)
             if annotation is not int:
@@ -55,9 +56,7 @@ def brrr(f: Optional[Callable] = None, /, *, dump_ir: bool = False):
         return take_source(ast_str, opts)
 
     if f is not None:
-        return inner(
-            f,
-        )
+        return inner(f)
     else:
         # got config
         return inner

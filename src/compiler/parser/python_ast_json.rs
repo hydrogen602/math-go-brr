@@ -67,17 +67,24 @@ pub enum PyJsonNode {
         location: Location,
     },
     Load,
+    Constant {
+        value: Option<serde_json::Value>,
+        #[serde(flatten)]
+        location: Location,
+        //kind: Option<String>, idk what these are
+        //n: Option<i64>,
+        //s: Option<i64>,
+    },
+    UnaryOp {
+        op: Box<PyJsonNode>,
+        operand: Box<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
+    USub,
 }
 
 impl PyJsonNode {
-    // pub fn load_from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-    //     let file = File::open(path)?;
-    //     let reader = BufReader::new(file);
-
-    //     let node = serde_json::from_reader(reader)?;
-    //     Ok(node)
-    // }
-
     pub fn load_from_str(s: &str) -> anyhow::Result<Self> {
         let node = serde_json::from_str(s)?;
         Ok(node)

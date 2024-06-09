@@ -2,26 +2,31 @@ use inkwell::{
     context::Context, execution_engine::ExecutionEngine, module::Module, OptimizationLevel,
 };
 
-use super::{ast_to_llvm::CodeGen, parser::python_ast::Function, util::Ext};
+use crate::signature::Signature;
+
+use super::{ast_to_llvm::CodeGen, parser::python_ast::FunctionAST, util::Ext};
 
 #[derive(Debug)]
-pub struct LLVMContext(Context);
+/// Note: Context is not thread safe.
+/// The docs say: "you should be careful to have one context per thread"
+/// https://llvm.org/doxygen/classllvm_1_1LLVMContext.html#details
+pub struct LLVMJitContext(Context);
 
-pub struct LLVM<'ctx> {
+pub struct LLVMModule<'ctx> {
     pub context: &'ctx Context,
     pub module: Module<'ctx>,
     pub execution_engine: ExecutionEngine<'ctx>,
 }
 
-impl LLVMContext {
+impl LLVMJitContext {
     pub fn new() -> Self {
         Self(Context::create())
     }
 }
 
-impl<'ctx> LLVM<'ctx> {
-    pub fn new(context: &'ctx LLVMContext) -> anyhow::Result<Self> {
-        let module = context.0.create_module("test_go_brrr");
+impl<'ctx> LLVMModule<'ctx> {
+    pub fn new(context: &'ctx LLVMJitContext, module_name: &str) -> anyhow::Result<Self> {
+        let module = context.0.create_module(module_name);
         let execution_engine = module
             .create_jit_execution_engine(OptimizationLevel::Default)
             .err_convert()?;
@@ -39,13 +44,13 @@ impl<'ctx> LLVM<'ctx> {
 
     pub fn compile_func(
         &self,
-        func: Function,
+        func: FunctionAST,
         compile_opts: super::CompileOpts,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Signature> {
         let mut codegen = self.new_codegen();
 
-        codegen.jit_compile_function(func, compile_opts)?;
+        let (_, sig) = codegen.jit_compile_function(func, compile_opts)?;
 
-        Ok(())
+        Ok(sig)
     }
 }
