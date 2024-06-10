@@ -3,7 +3,14 @@ from typing import Callable, Optional
 from .math_go_brrr import take_source, CompileOpts
 
 
-def brrr(f: Optional[Callable] = None, /, *, dump_ir: bool = False):
+def brrr(
+    f: Optional[Callable] = None,
+    /,
+    *,
+    dump_ir: bool = False,
+    dump_ast: bool = False,
+    dump_ast_json: bool = False,
+):
     """
     Setup so it can both be used like:
     .. code-block:: python
@@ -51,8 +58,15 @@ def brrr(f: Optional[Callable] = None, /, *, dump_ir: bool = False):
             code = re.sub(f"^{space}", "", code, flags=re.MULTILINE)
 
         tree = ast.parse(code)
+        if dump_ast:
+            print(ast.dump(tree, indent=2))
+
         js = ast2json.ast2json(tree)
         ast_str = json.dumps(js, indent=2)
+
+        if dump_ast_json:
+            print(ast_str)
+
         return take_source(ast_str, opts)
 
     if f is not None:

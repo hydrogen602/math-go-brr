@@ -1,5 +1,4 @@
 use anyhow::{anyhow, bail};
-pub use inkwell::execution_engine::JitFunction;
 use parser::python_ast::FunctionAST;
 use parser::python_ast_json::PyJsonNode;
 

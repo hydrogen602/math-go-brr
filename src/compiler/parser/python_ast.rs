@@ -20,6 +20,10 @@ pub struct Arg {
 #[derive(Debug)]
 pub enum StatementAST {
     Return(Option<ExpressionAST>),
+    Assign {
+        target: String,
+        value: ExpressionAST,
+    },
 }
 
 #[derive(Debug)]
@@ -137,6 +141,30 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
                     Some(expr) => Some(translate_expression(*expr)?),
                     None => None,
                 }));
+            }
+            PyJsonNode::Assign { targets, value, .. } => {
+                ensure!(
+                    targets.len() == 1,
+                    "Only single target assign currently supported"
+                );
+                let target = targets.into_iter().next().unwrap();
+
+                let PyJsonNode::Name {
+                    id: target, ctx, ..
+                } = target
+                else {
+                    bail!("Expected Name, got {:?}", target)
+                };
+                ensure!(
+                    matches!(*ctx, PyJsonNode::Store),
+                    "Expected Store, got {:?}",
+                    ctx
+                );
+
+                statements.push(StatementAST::Assign {
+                    target,
+                    value: translate_expression(*value)?,
+                });
             }
             _ => bail!("Unsupported statement: {:?}", node),
         }

@@ -21,7 +21,7 @@ pub enum PyJsonNode {
         name: String,
         args: Box<PyJsonNode>,
         body: Vec<PyJsonNode>,
-        decorator_list: Vec<PyJsonNode>,
+        // decorator_list: Vec<PyJsonNode>, don't care rn
         returns: Option<Box<PyJsonNode>>,
         type_comment: Option<Box<PyJsonNode>>,
         type_params: Vec<PyJsonNode>,
@@ -67,6 +67,7 @@ pub enum PyJsonNode {
         location: Location,
     },
     Load,
+    Store,
     Constant {
         value: Option<serde_json::Value>,
         #[serde(flatten)]
@@ -82,6 +83,12 @@ pub enum PyJsonNode {
         location: Location,
     },
     USub,
+    Assign {
+        targets: Vec<PyJsonNode>,
+        value: Box<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
 }
 
 impl PyJsonNode {

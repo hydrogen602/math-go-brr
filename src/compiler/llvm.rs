@@ -47,7 +47,7 @@ impl<'ctx> LLVMModule<'ctx> {
         func: FunctionAST,
         compile_opts: super::CompileOpts,
     ) -> anyhow::Result<Signature> {
-        let mut codegen = self.new_codegen();
+        let codegen = self.new_codegen();
 
         let (_, sig) = codegen.jit_compile_function(func, compile_opts)?;
 

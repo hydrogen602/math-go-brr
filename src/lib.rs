@@ -1,19 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
-use anyhow::anyhow;
-use inkwell::execution_engine::UnsafeFunctionPointer;
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError},
     prelude::*,
     types::PyTuple,
 };
 
-use compiler::{
-    llvm::{LLVMJitContext, LLVMModule},
-    JitFunction,
-};
-use util::{Ext, Intermediary};
+use compiler::llvm::{LLVMJitContext, LLVMModule};
+use util::Intermediary;
 
 mod compiler;
 mod signature;
@@ -27,24 +22,6 @@ struct ContextAndLLVM {
     context: AliasableBox<LLVMJitContext>,
     func_name: String,
     signature: signature::Signature,
-}
-
-impl ContextAndLLVM {
-    // T like unsafe extern "C" fn() -> i64
-    pub fn get_function<F>(&self) -> anyhow::Result<JitFunction<F>>
-    where
-        F: UnsafeFunctionPointer,
-    {
-        let f = unsafe {
-            self.module
-                .execution_engine
-                .get_function(&self.func_name)
-                .ok()
-        }
-        .ok_or_else(|| anyhow!("Function {} not found", self.func_name))?;
-
-        Ok(f)
-    }
 }
 
 #[pyclass]
@@ -88,10 +65,8 @@ pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
         })
     };
 
-    let ctx = inner()?;
-
     Ok(Func {
-        llvm: Arc::new(Mutex::new(ctx)),
+        llvm: Arc::new(Mutex::new(inner()?)),
     })
 }
 
