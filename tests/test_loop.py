@@ -10,6 +10,11 @@ def test_road_to_loops_assignment():
 
     assert foo(4, 5) == 13
 
+    @brrr(dump_ir=True, dump_ast=True)
+    def foo() -> int:
+        c = 10
+        d = 5
+        e = 3
+        return c + d
 
-if __name__ == "__main__":
-    test_road_to_loops_assignment()
+    assert foo() == 15
