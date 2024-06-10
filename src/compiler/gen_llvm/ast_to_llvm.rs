@@ -5,12 +5,15 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    values::{BasicValueEnum, FunctionValue, IntValue, PointerValue},
+    values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
 };
 
-use crate::signature::Signature;
+use crate::{
+    compiler::{parser, CompileOpts},
+    signature::Signature,
+};
 
-use super::{
+use super::super::{
     parser::python_ast::{Arg, BinOp, ConstantAST, ExpressionAST, FunctionAST, StatementAST},
     ArgType,
 };
@@ -33,6 +36,21 @@ enum VarData<'ctx> {
     VarInt(PointerValue<'ctx>),
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Expr<'ctx> {
+    I64(IntValue<'ctx>),
+    Bool(IntValue<'ctx>),
+}
+
+impl<'ctx> Expr<'ctx> {
+    fn into_dyn(&self) -> &dyn BasicValue<'ctx> {
+        match self {
+            Expr::I64(val) => val,
+            Expr::Bool(val) => val,
+        }
+    }
+}
+
 impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     fn new_tmp_var_name(&mut self) -> String {
         let name = format!("_tmp_var_{}", self.tmp_var_counter);
@@ -50,16 +68,26 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         }
     }
 
-    fn jit_compile_expr(&mut self, val: ExpressionAST) -> anyhow::Result<IntValue<'ctx>> {
+    fn jit_compile_expr(&mut self, val: ExpressionAST) -> anyhow::Result<Expr<'ctx>> {
         match val {
             ExpressionAST::BinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
                 let rhs = self.jit_compile_expr(*rhs)?;
                 let name = self.new_tmp_var_name();
 
-                Ok(match op {
-                    BinOp::Add => self.builder.build_int_add(lhs, rhs, &name)?,
-                    BinOp::Sub => self.builder.build_int_sub(lhs, rhs, &name)?,
+                Ok(match (lhs, op, rhs) {
+                    (Expr::I64(lhs), BinOp::Add, Expr::I64(rhs)) => {
+                        Expr::I64(self.builder.build_int_add(lhs, rhs, &name)?)
+                    }
+                    (Expr::I64(lhs), BinOp::Sub, Expr::I64(rhs)) => {
+                        Expr::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
+                    }
+                    (Expr::Bool(_), BinOp::Add | BinOp::Sub, _) => {
+                        bail!("Add/Sub not supported for bool")
+                    }
+                    (_, BinOp::Add | BinOp::Sub, Expr::Bool(_)) => {
+                        bail!("Add/Sub not supported for bool")
+                    }
                 })
             }
             ExpressionAST::Name(name) => {
@@ -71,7 +99,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     .ok_or_else(|| anyhow!("Unknown variable: {}", name))?;
 
                 match data {
-                    VarData::ConstInt(val) => Ok(val),
+                    VarData::ConstInt(val) => Ok(Expr::I64(val)),
                     VarData::VarInt(ptr) => Ok({
                         let tmp_var = self.new_tmp_var_name();
                         let ty = self.context.i64_type();
@@ -80,46 +108,49 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         else {
                             bail!("Expected IntValue, this is a bug");
                         };
-                        value
+                        Expr::I64(value)
                     }),
                 }
             }
             ExpressionAST::Constant(ConstantAST::I64(val)) => {
                 // idk about sign_extend, but we are passing in 64 bits.
                 // even though it says u64, it still does it signed
-                Ok(self.context.i64_type().const_int(val as u64, false))
+                Ok(Expr::I64(
+                    self.context.i64_type().const_int(val as u64, false),
+                ))
             }
             ExpressionAST::UnaryOp(op, val) => {
                 let val = self.jit_compile_expr(*val)?;
                 let name = self.new_tmp_var_name();
 
-                Ok(match op {
-                    super::parser::python_ast::UnaryOp::USub => {
-                        self.builder.build_int_neg(val, &name)?
+                Ok(match (val, op) {
+                    (Expr::I64(val), parser::python_ast::UnaryOp::USub) => {
+                        Expr::I64(self.builder.build_int_neg(val, &name)?)
+                    }
+                    (Expr::Bool(_), parser::python_ast::UnaryOp::USub) => {
+                        bail!("Unary minus on bool not supported")
                     }
                 })
             }
         }
     }
 
-    fn jit_compile_stmt(
-        &mut self,
-        val: StatementAST,
-        code_analysis: &CodeAnalysis,
-    ) -> anyhow::Result<()> {
+    fn jit_compile_stmt(&mut self, val: StatementAST) -> anyhow::Result<()> {
         match val {
             StatementAST::Return(val) => {
                 let val = match val {
                     Some(val) => self.jit_compile_expr(val)?,
-                    None => self.context.i64_type().const_zero(),
+                    None => Expr::I64(self.context.i64_type().const_zero()),
                 };
 
-                self.builder.build_return(Some(&val))?;
+                self.builder.build_return(Some(val.into_dyn()))?;
             }
             StatementAST::Assign { target, value } => {
                 let existing_var = self.variables.get(&target).cloned();
 
                 let value = self.jit_compile_expr(value)?;
+
+                let Expr::I64(value) = value else { todo!() };
 
                 match existing_var {
                     Some(var) => match var {
@@ -146,13 +177,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         Ok(())
     }
 
-    fn jit_compile_body(
-        &mut self,
-        body: Vec<StatementAST>,
-        code_analysis: &CodeAnalysis,
-    ) -> anyhow::Result<()> {
+    fn jit_compile_body(&mut self, body: Vec<StatementAST>) -> anyhow::Result<()> {
         for stmt in body {
-            self.jit_compile_stmt(stmt, &code_analysis)?;
+            self.jit_compile_stmt(stmt)?;
         }
 
         Ok(())
@@ -198,7 +225,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     pub fn jit_compile_function(
         mut self,
         func: FunctionAST,
-        compile_opts: super::CompileOpts,
+        compile_opts: CompileOpts,
     ) -> anyhow::Result<(FunctionValue<'ctx>, Signature)> {
         let i64_type = self.context.i64_type();
 
@@ -233,7 +260,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
         self.jit_compile_args(args, &function, &code_analysis)?;
 
-        self.jit_compile_body(body, &code_analysis)?;
+        self.jit_compile_body(body)?;
 
         if compile_opts.dump_ir {
             eprintln!("");
@@ -255,8 +282,6 @@ struct CodeAnalysis {
 struct VariableInfo {
     /// false until proven otherwise
     is_assigned: bool,
-    /// rn, we only know it for args
-    type_: Option<ArgType>,
 }
 
 impl CodeAnalysis {
@@ -266,13 +291,7 @@ impl CodeAnalysis {
         let mut variable_info: HashMap<String, VariableInfo> = HashMap::new();
 
         for arg in args {
-            variable_info.insert(
-                arg.arg.clone(),
-                VariableInfo {
-                    is_assigned: false,
-                    type_: Some(arg.type_),
-                },
-            );
+            variable_info.insert(arg.arg.clone(), VariableInfo { is_assigned: false });
         }
 
         for stmt in body {
@@ -281,13 +300,7 @@ impl CodeAnalysis {
                     if let Some(var) = variable_info.get_mut(target) {
                         var.is_assigned = true;
                     } else {
-                        variable_info.insert(
-                            target.clone(),
-                            VariableInfo {
-                                is_assigned: true,
-                                type_: None,
-                            },
-                        );
+                        variable_info.insert(target.clone(), VariableInfo { is_assigned: true });
                     }
                 }
                 StatementAST::Return(_) => {}

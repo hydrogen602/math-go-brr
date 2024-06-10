@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail};
 use parser::python_ast::FunctionAST;
 use parser::python_ast_json::PyJsonNode;
 
-mod ast_to_llvm;
+mod gen_llvm;
 pub mod llvm;
 mod parser;
 mod util;

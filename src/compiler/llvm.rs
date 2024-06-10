@@ -4,7 +4,7 @@ use inkwell::{
 
 use crate::signature::Signature;
 
-use super::{ast_to_llvm::CodeGen, parser::python_ast::FunctionAST, util::Ext};
+use super::{gen_llvm::CodeGen, parser::python_ast::FunctionAST, util::Ext};
 
 #[derive(Debug)]
 /// Note: Context is not thread safe.
