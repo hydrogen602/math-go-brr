@@ -236,8 +236,11 @@ macro_rules! impl_type_to_arg {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ArgType {
     I64,
+    Bool,
 }
 
 impl_type_to_arg!(i64, ArgType::I64);
+impl_type_to_arg!(bool, ArgType::Bool);
