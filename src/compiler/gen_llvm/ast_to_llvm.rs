@@ -6,6 +6,7 @@ use inkwell::{
     context::Context,
     module::Module,
     values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue},
+    AddressSpace,
 };
 
 use crate::{
@@ -210,6 +211,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         function: &FunctionValue<'ctx>,
         code_analysis: &CodeAnalysis,
     ) -> anyhow::Result<()> {
+        let i64_type = self.context.i64_type();
+        let bool_type = self.context.bool_type();
+
         for (i, arg) in args.into_iter().enumerate() {
             let var_info = code_analysis
                 .variable_info
@@ -218,40 +222,40 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
             let raw_val = function
                 .get_nth_param(i as u32)
-                .ok_or_else(|| anyhow!("Argument count off"))?;
+                .ok_or_else(|| anyhow!("Argument count off"))?
+                .into_pointer_value();
 
-            let x = match arg.type_ {
-                ArgType::I64 => Typed::I64(raw_val.into_int_value()),
-                ArgType::Bool => Typed::Bool(raw_val.into_int_value()),
+            let x_ptr = match arg.type_ {
+                ArgType::I64 => Typed::I64(raw_val),
+                ArgType::Bool => Typed::Bool(raw_val),
             };
 
             if var_info.is_assigned {
                 let name = arg.arg.clone();
-                let typed_ptr = match arg.type_ {
-                    ArgType::I64 => {
-                        let ptr = self
-                            .builder
-                            .build_alloca(self.context.i64_type(), &arg.arg)?;
-                        self.builder
-                            .build_store(ptr, x.into_i64().expect("this is a bug"))?;
-                        Typed::I64(ptr)
-                    }
-                    ArgType::Bool => {
-                        let ptr = self
-                            .builder
-                            .build_alloca(self.context.bool_type(), &arg.arg)?;
-                        self.builder
-                            .build_store(ptr, x.into_bool().expect("this is a bug"))?;
-                        Typed::Bool(ptr)
-                    }
-                };
-                self.variables.insert(name, VarData::Var(typed_ptr));
+                self.variables.insert(name, VarData::Var(x_ptr));
             } else {
+                let tmp_var = self.new_tmp_var_name();
                 self.variables.insert(
                     arg.arg,
                     VarData::Const(match arg.type_ {
-                        ArgType::I64 => Typed::I64(x.into_i64().expect("this is a bug")),
-                        ArgType::Bool => Typed::Bool(x.into_bool().expect("this is a bug")),
+                        ArgType::I64 => Typed::I64(
+                            self.builder
+                                .build_load(
+                                    i64_type,
+                                    x_ptr.into_i64().expect("This is a bug"),
+                                    &tmp_var,
+                                )?
+                                .into_int_value(),
+                        ),
+                        ArgType::Bool => Typed::Bool(
+                            self.builder
+                                .build_load(
+                                    bool_type,
+                                    x_ptr.into_bool().expect("This is a bug"),
+                                    &tmp_var,
+                                )?
+                                .into_int_value(),
+                        ),
                     }),
                 );
             }
@@ -267,6 +271,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     ) -> anyhow::Result<(FunctionValue<'ctx>, Signature)> {
         let i64_type = self.context.i64_type();
         let bool_type = self.context.bool_type();
+        // let ptr_type = self.context.ptr_type(6);
+
+        // Context::ptr
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let code_analysis = CodeAnalysis::analyze_function(&func);
 
@@ -280,10 +288,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         let mut arg_types_llvm = vec![];
         let mut arg_types = vec![];
         for arg in &args {
-            arg_types_llvm.push(match arg.type_ {
-                ArgType::I64 => i64_type.into(),
-                ArgType::Bool => bool_type.into(),
-            });
+            arg_types_llvm.push(ptr_type.into());
             arg_types.push(arg.type_)
         }
 

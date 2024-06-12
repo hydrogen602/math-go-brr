@@ -14,51 +14,73 @@ impl Signature {
         Self { args, ret }
     }
 
-    // unsafe extern "C" fn(i64, i64) -> i64
-    pub unsafe fn call(&self, context_and_module: &ContextAndLLVM, args: &[i64]) -> PyResult<i64> {
+    /// args is mut as we pass pointers to llvm function and we don't know what llvm does with them
+    pub unsafe fn call(
+        &self,
+        context_and_module: &ContextAndLLVM,
+        args: &mut [i64],
+    ) -> PyResult<i64> {
         assert_eq!(
             self.args.len(),
             args.len(),
             "Argument count mismatch, this is a bug"
         );
 
-        match (self.ret, &self.args[..]) {
-            (i64::ARG, sl) if sl.is_empty() => {
+        // Safety: don't call this function with the same arg twice (would create overlapping mut pointers)
+        let arg_to_ptr = |idx: usize| &args[idx] as *const i64 as *mut ();
+
+        type Ptr = *mut ();
+
+        match (self.ret, self.args.len()) {
+            (i64::ARG, 0) => {
                 let f = Self::call_helper::<unsafe extern "C" fn() -> i64>(context_and_module)?;
                 Ok(f.call())
             }
-            (i64::ARG, &[i64::ARG]) => {
-                let f = Self::call_helper::<unsafe extern "C" fn(i64) -> i64>(context_and_module)?;
-                Ok(f.call(args[0]))
+            (i64::ARG, 1) => {
+                let f = Self::call_helper::<unsafe extern "C" fn(Ptr) -> i64>(context_and_module)?;
+                Ok(f.call(arg_to_ptr(0)))
             }
-            (i64::ARG, &[i64::ARG, i64::ARG]) => {
+            (i64::ARG, 2) => {
                 let f =
-                    Self::call_helper::<unsafe extern "C" fn(i64, i64) -> i64>(context_and_module)?;
-                Ok(f.call(args[0], args[1]))
+                    Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr) -> i64>(context_and_module)?;
+                Ok(f.call(arg_to_ptr(0), arg_to_ptr(1)))
             }
-            (i64::ARG, &[i64::ARG, i64::ARG, i64::ARG]) => {
-                let f = Self::call_helper::<unsafe extern "C" fn(i64, i64, i64) -> i64>(
+            (i64::ARG, 3) => {
+                let f = Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr, Ptr) -> i64>(
                     context_and_module,
                 )?;
-                Ok(f.call(args[0], args[1], args[2]))
+                Ok(f.call(arg_to_ptr(0), arg_to_ptr(1), arg_to_ptr(2)))
             }
-            (i64::ARG, &[i64::ARG, i64::ARG, i64::ARG, i64::ARG]) => {
-                let f = Self::call_helper::<unsafe extern "C" fn(i64, i64, i64, i64) -> i64>(
+            (i64::ARG, 4) => {
+                let f = Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr) -> i64>(
                     context_and_module,
                 )?;
-                Ok(f.call(args[0], args[1], args[2], args[3]))
+                Ok(f.call(arg_to_ptr(0), arg_to_ptr(1), arg_to_ptr(2), arg_to_ptr(3)))
             }
-            (i64::ARG, &[i64::ARG, i64::ARG, i64::ARG, i64::ARG, i64::ARG]) => {
-                let f = Self::call_helper::<unsafe extern "C" fn(i64, i64, i64, i64, i64) -> i64>(
+            (i64::ARG, 5) => {
+                let f = Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr) -> i64>(
                     context_and_module,
                 )?;
-                Ok(f.call(args[0], args[1], args[2], args[3], args[4]))
+                Ok(f.call(
+                    arg_to_ptr(0),
+                    arg_to_ptr(1),
+                    arg_to_ptr(2),
+                    arg_to_ptr(3),
+                    arg_to_ptr(4),
+                ))
             }
-            (i64::ARG, &[i64::ARG, i64::ARG, i64::ARG, i64::ARG, i64::ARG, i64::ARG]) => {
+            (i64::ARG, 6) => {
                 let f = Self::call_helper::<
-                    unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) -> i64,
+                    unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr, Ptr) -> i64,
                 >(context_and_module)?;
-                Ok(f.call(args[0], args[1], args[2], args[3], args[4], args[5]))
+                Ok(f.call(
+                    arg_to_ptr(0),
+                    arg_to_ptr(1),
+                    arg_to_ptr(2),
+                    arg_to_ptr(3),
+                    arg_to_ptr(4),
+                    arg_to_ptr(5),
+                ))
             }
             (ret, args) => {
                 return Err(PyRuntimeError::new_err(format!(

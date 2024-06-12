@@ -85,7 +85,7 @@ impl Func {
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
         // TODO: improve with SmallVec<[i64; 5]>
-        let args: Vec<i64> = match py_args
+        let mut args: Vec<i64> = match py_args
             .into_iter()
             .map(|py_arg| FromPyObject::extract_bound(&py_arg))
             .collect()
@@ -94,7 +94,7 @@ impl Func {
             Err(e) => return Err(PyTypeError::new_err(e.to_string())),
         };
 
-        let out = unsafe { lock.signature.call(&lock, &args) }?;
+        let out = unsafe { lock.signature.call(&lock, &mut args) }?;
 
         Ok(out)
     }
