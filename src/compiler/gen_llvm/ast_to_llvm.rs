@@ -129,12 +129,19 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     }
                 }))
             }
-            ExpressionAST::Constant(ConstantAST::I64(val)) => {
-                // idk about sign_extend, but we are passing in 64 bits.
-                // even though it says u64, it still does it signed
-                Ok(Expr(Typed::I64(
-                    self.context.i64_type().const_int(val as u64, false),
-                )))
+            ExpressionAST::Constant(const_) => {
+                match const_ {
+                    ConstantAST::I64(val) => {
+                        // idk about sign_extend, but we are passing in 64 bits.
+                        // even though it says u64, it still does it signed
+                        Ok(Expr(Typed::I64(
+                            self.context.i64_type().const_int(val as u64, false),
+                        )))
+                    }
+                    ConstantAST::Bool(val) => Ok(Expr(Typed::Bool(
+                        self.context.bool_type().const_int(val as u64, false),
+                    ))),
+                }
             }
             ExpressionAST::UnaryOp(op, val) => {
                 let val = self.jit_compile_expr(*val)?;
@@ -167,28 +174,51 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
                 let value = self.jit_compile_expr(value)?;
 
-                let Typed::I64(value) = value.0 else { todo!() };
-
                 match existing_var {
                     Some(var) => match var {
                         VarData::Const(_) => {
                             bail!("Cannot assign to a constant. This is a bug")
                         }
                         VarData::Var(Typed::I64(ptr)) => {
+                            let Ok(value) = value.0.into_i64() else {
+                                bail!(
+                                    "Expected i64, but expression returned {}",
+                                    value.0.type_name()
+                                )
+                            };
+
                             self.builder.build_store(ptr, value)?;
                         }
                         VarData::Var(Typed::Bool(ptr)) => {
+                            let Ok(value) = value.0.into_bool() else {
+                                bail!(
+                                    "Expected bool, but expression returned {}",
+                                    value.0.type_name()
+                                )
+                            };
+
                             self.builder.build_store(ptr, value)?;
                         }
                     },
                     None => {
-                        // TODO: only supports i64 for now
-                        let ptr = self
-                            .builder
-                            .build_alloca(self.context.i64_type(), &target)?;
-                        self.builder.build_store(ptr, value)?;
+                        let typed = match value.0 {
+                            Typed::I64(value) => {
+                                let ptr = self
+                                    .builder
+                                    .build_alloca(self.context.i64_type(), &target)?;
+                                self.builder.build_store(ptr, value)?;
+                                Typed::I64(ptr)
+                            }
+                            Typed::Bool(value) => {
+                                let ptr = self
+                                    .builder
+                                    .build_alloca(self.context.bool_type(), &target)?;
+                                self.builder.build_store(ptr, value)?;
+                                Typed::Bool(ptr)
+                            }
+                        };
 
-                        self.variables.insert(target, VarData::Var(Typed::I64(ptr)));
+                        self.variables.insert(target, VarData::Var(typed));
                     }
                 }
             }

@@ -18,3 +18,39 @@ def test_road_to_loops_assignment():
         return c + d
 
     assert foo() == 15
+
+
+def test_road_to_loops_booleans():
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return a
+
+    assert foo(True, False) == True
+    assert foo(False, False) == False
+    assert foo(True, True) == True
+    assert foo(False, True) == False
+
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return b
+
+    assert foo(True, False) == False
+    assert foo(False, False) == False
+    assert foo(True, True) == True
+    assert foo(False, True) == True
+
+    @brrr
+    def foo(i: int, a: bool) -> bool:
+        b = a
+        return b
+
+    assert foo(42, True) == True
+    assert foo(10000000, False) == False
+
+    @brrr
+    def foo(a: bool) -> bool:
+        b = True
+        return b
+
+    assert foo(False) == True
+    assert foo(True) == True

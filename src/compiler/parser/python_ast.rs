@@ -42,7 +42,8 @@ pub enum UnaryOp {
 #[derive(Debug)]
 pub enum ConstantAST {
     I64(i64), // idk why, but -4 in py ast is unaryop { usub, 4 }
-              // TODO: F64(f64),
+    // TODO: F64(f64),
+    Bool(bool),
 }
 
 #[derive(Debug)]
@@ -85,6 +86,7 @@ pub fn translate_func(func: PyJsonNode) -> anyhow::Result<FunctionAST> {
 
     let return_type = match returns.as_deref() {
         Some(PyJsonNode::Name { id, .. }) => translate_arg_type(&id),
+        None => bail!("Expected return type, got None"),
         _ => bail!("Expected Name, got {:?} for return type", returns),
     };
 
@@ -118,6 +120,7 @@ fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
                     bail!("TODO: Unsupported number: {:?}", n)
                 }
             }
+            Some(serde_json::Value::Bool(b)) => Ok(ExpressionAST::Constant(ConstantAST::Bool(b))),
             _ => bail!("Unsupported constant: {:?}", value),
         },
         PyJsonNode::UnaryOp { op, operand, .. } => {
@@ -207,6 +210,7 @@ fn translate_args(args: PyJsonNode) -> anyhow::Result<Vec<Arg>> {
             arg,
             type_: match annotation.as_deref() {
                 Some(PyJsonNode::Name { id, .. }) => translate_arg_type(id),
+                None => bail!("Expected annotation, got None"),
                 _ => bail!("Expected Name, got {:?} for argument type", annotation),
             },
         });
@@ -218,6 +222,7 @@ fn translate_args(args: PyJsonNode) -> anyhow::Result<Vec<Arg>> {
 fn translate_arg_type(arg_type: &str) -> ArgType {
     match arg_type {
         "int" => ArgType::I64,
+        "bool" => ArgType::Bool,
         _ => panic!("Unsupported type: {}", arg_type),
     }
 }

@@ -3,6 +3,9 @@ from typing import Callable, Optional
 from .math_go_brrr import take_source, CompileOpts
 
 
+ACCEPTED_TYPES: frozenset[type] = frozenset([int, bool])
+
+
 def brrr(
     f: Optional[Callable] = None,
     /,
@@ -37,17 +40,26 @@ def brrr(
         sig = inspect.signature(f)
         params = sig.parameters
 
+        def nice_accepted_writer():
+            match list(ACCEPTED_TYPES):
+                case []:
+                    return ""
+                case [t]:
+                    return t.__name__
+                case [*rest, t]:
+                    return ", ".join(t.__name__ for t in rest) + " or " + t.__name__
+
         for p in params:
             annotation = anno.get(p)
-            if annotation is not int:
+            if annotation not in ACCEPTED_TYPES:
                 raise TypeError(
-                    f"Expected parameter {p} to be int, but got {annotation} while making {name} go brrr"
+                    f"Expected parameter {p} to be {nice_accepted_writer()}, but got {annotation} while making {name} go brrr"
                 )
 
         return_type = sig.return_annotation
-        if return_type is not int:
+        if return_type not in ACCEPTED_TYPES:
             raise TypeError(
-                f"Expected return type to be int, but got {return_type} while making {name} go brrr"
+                f"Expected return type to be {nice_accepted_writer()}, but got {return_type} while making {name} go brrr"
             )
 
         code = inspect.getsource(f)

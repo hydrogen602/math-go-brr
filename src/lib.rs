@@ -7,7 +7,10 @@ use pyo3::{
     types::PyTuple,
 };
 
-use compiler::llvm::{LLVMJitContext, LLVMModule};
+use compiler::{
+    llvm::{LLVMJitContext, LLVMModule},
+    Typed,
+};
 use util::Intermediary;
 
 mod compiler;
@@ -78,25 +81,36 @@ pub struct Func {
 #[pymethods]
 impl Func {
     #[pyo3(signature = (*py_args))]
-    fn __call__(&self, py_args: &Bound<'_, PyTuple>) -> PyResult<i64> {
+    fn __call__(&self, py_args: &Bound<'_, PyTuple>) -> PyResult<Typed<i64, bool>> {
         let lock = self
             .llvm
             .lock()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
         // TODO: improve with SmallVec<[i64; 5]>
-        let mut args: Vec<i64> = match py_args
-            .into_iter()
-            .map(|py_arg| FromPyObject::extract_bound(&py_arg))
-            .collect()
-        {
-            Ok(args) => args,
-            Err(e) => return Err(PyTypeError::new_err(e.to_string())),
-        };
+        // TODO: type check - with signature
+        // let mut args: Vec<Typed<i64, bool>> = match py_args
+        //     .into_iter()
+        //     .zip(s.args.iter())
+        //     .map(|py_arg| FromPyObject::extract_bound(&py_arg))
+        //     .collect()
+        // {
+        //     Ok(args) => args,
+        //     Err(e) => return Err(PyTypeError::new_err(e.to_string())),
+        // };
 
-        let out = unsafe { lock.signature.call(&lock, &mut args) }?;
+        let out = unsafe { lock.signature.call(&lock, py_args) }?;
 
         Ok(out)
+    }
+}
+
+impl IntoPy<PyObject> for Typed<i64, bool> {
+    fn into_py(self, py: Python) -> PyObject {
+        match self {
+            Typed::I64(i) => i.into_py(py),
+            Typed::Bool(b) => b.into_py(py),
+        }
     }
 }
 

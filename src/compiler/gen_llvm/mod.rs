@@ -2,7 +2,7 @@ mod ast_to_llvm;
 pub use ast_to_llvm::*;
 
 #[derive(Debug, Clone, Copy)]
-enum Typed<I, B> {
+pub enum Typed<I, B> {
     I64(I),
     Bool(B),
 }
@@ -19,6 +19,13 @@ impl<I, B> Typed<I, B> {
         match self {
             Typed::I64(_) => Err(self),
             Typed::Bool(b) => Ok(b),
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Typed::I64(_) => "i64",
+            Typed::Bool(_) => "bool",
         }
     }
 }
