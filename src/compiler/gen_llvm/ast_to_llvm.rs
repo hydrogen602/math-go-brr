@@ -17,7 +17,7 @@ use crate::{
 use super::{
     super::{
         parser::python_ast::{Arg, BinOp, ConstantAST, ExpressionAST, FunctionAST, StatementAST},
-        ArgType,
+        Type,
     },
     Typed,
 };
@@ -183,7 +183,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                             let Ok(value) = value.0.into_i64() else {
                                 bail!(
                                     "Expected i64, but expression returned {}",
-                                    value.0.type_name()
+                                    value.0.py_type_name()
                                 )
                             };
 
@@ -193,7 +193,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                             let Ok(value) = value.0.into_bool() else {
                                 bail!(
                                     "Expected bool, but expression returned {}",
-                                    value.0.type_name()
+                                    value.0.py_type_name()
                                 )
                             };
 
@@ -256,8 +256,8 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 .into_pointer_value();
 
             let x_ptr = match arg.type_ {
-                ArgType::I64 => Typed::I64(raw_val),
-                ArgType::Bool => Typed::Bool(raw_val),
+                Type::I64 => Typed::I64(raw_val),
+                Type::Bool => Typed::Bool(raw_val),
             };
 
             if var_info.is_assigned {
@@ -268,7 +268,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 self.variables.insert(
                     arg.arg,
                     VarData::Const(match arg.type_ {
-                        ArgType::I64 => Typed::I64(
+                        Type::I64 => Typed::I64(
                             self.builder
                                 .build_load(
                                     i64_type,
@@ -277,7 +277,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                                 )?
                                 .into_int_value(),
                         ),
-                        ArgType::Bool => Typed::Bool(
+                        Type::Bool => Typed::Bool(
                             self.builder
                                 .build_load(
                                     bool_type,
@@ -325,8 +325,8 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         let sig = Signature::new(arg_types, return_type);
 
         let fn_type = match return_type {
-            ArgType::I64 => i64_type.fn_type(&arg_types_llvm, false),
-            ArgType::Bool => bool_type.fn_type(&arg_types_llvm, false),
+            Type::I64 => i64_type.fn_type(&arg_types_llvm, false),
+            Type::Bool => bool_type.fn_type(&arg_types_llvm, false),
         };
 
         let function = self.module.add_function(&name, fn_type, None);

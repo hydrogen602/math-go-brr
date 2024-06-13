@@ -7,8 +7,7 @@ pub mod llvm;
 mod parser;
 mod util;
 
-pub use gen_llvm::Typed;
-pub use parser::python_ast::{ArgType, TypeToArg};
+pub use gen_llvm::{Type, TypeToArg, Typed};
 
 pub fn parse(py_ast_json: &str) -> anyhow::Result<FunctionAST> {
     let py_ast = PyJsonNode::load_from_str(py_ast_json)?;

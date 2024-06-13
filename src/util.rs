@@ -14,12 +14,12 @@ impl From<Intermediary> for pyo3::prelude::PyErr {
     }
 }
 
-pub trait Ext<T> {
-    fn err_convert(self) -> PyResult<T>;
-}
+// pub trait Ext<T> {
+//     fn err_convert(self) -> PyResult<T>;
+// }
 
-impl<T> Ext<T> for anyhow::Result<T> {
-    fn err_convert(self) -> PyResult<T> {
-        self.map_err(|e| exceptions::PyRuntimeError::new_err(e.to_string()))
-    }
-}
+// impl<T> Ext<T> for anyhow::Result<T> {
+//     fn err_convert(self) -> PyResult<T> {
+//         self.map_err(|e| exceptions::PyRuntimeError::new_err(e.to_string()))
+//     }
+// }

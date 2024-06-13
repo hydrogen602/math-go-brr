@@ -2,18 +2,18 @@ use inkwell::execution_engine::{FunctionLookupError, JitFunction, UnsafeFunction
 use pyo3::{exceptions::PyRuntimeError, types::PyTuple, Bound, FromPyObject, PyResult};
 
 use crate::{
-    compiler::{ArgType, TypeToArg, Typed},
+    compiler::{Type, TypeToArg, Typed},
     ContextAndLLVM,
 };
 
 #[derive(Debug)]
 pub struct Signature {
-    args: Vec<ArgType>,
-    ret: ArgType,
+    args: Vec<Type>,
+    ret: Type,
 }
 
 impl Signature {
-    pub fn new(args: Vec<ArgType>, ret: ArgType) -> Self {
+    pub fn new(args: Vec<Type>, ret: Type) -> Self {
         Self { args, ret }
     }
 
@@ -27,9 +27,9 @@ impl Signature {
             .into_iter()
             .zip(self.args.iter())
             .map(|(py_arg, arg_ty)| -> PyResult<Typed<i64, bool>> {
-                match arg_ty {
-                    ArgType::I64 => Ok(Typed::I64(FromPyObject::extract_bound(&py_arg)?)),
-                    ArgType::Bool => Ok(Typed::Bool(FromPyObject::extract_bound(&py_arg)?)),
+                match arg_ty.as_ref() {
+                    Typed::I64(_) => Ok(Typed::I64(FromPyObject::extract_bound(&py_arg)?)),
+                    Typed::Bool(_) => Ok(Typed::Bool(FromPyObject::extract_bound(&py_arg)?)),
                 }
             })
             .collect::<PyResult<Vec<_>>>()?;

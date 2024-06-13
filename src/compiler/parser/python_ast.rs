@@ -1,4 +1,9 @@
+use core::fmt;
+use std::borrow::Borrow;
+
 use anyhow::{bail, ensure};
+
+use crate::compiler::{gen_llvm::Type, Typed};
 
 use super::python_ast_json::PyJsonNode;
 
@@ -8,13 +13,13 @@ pub struct FunctionAST {
     pub name: String,
     pub args: Vec<Arg>,
     pub body: Vec<StatementAST>,
-    pub return_type: ArgType,
+    pub return_type: Type,
 }
 
 #[derive(Debug)]
 pub struct Arg {
     pub arg: String,
-    pub type_: ArgType,
+    pub type_: Type,
 }
 
 #[derive(Debug)]
@@ -85,7 +90,7 @@ pub fn translate_func(func: PyJsonNode) -> anyhow::Result<FunctionAST> {
     };
 
     let return_type = match returns.as_deref() {
-        Some(PyJsonNode::Name { id, .. }) => translate_arg_type(&id),
+        Some(PyJsonNode::Name { id, .. }) => translate_arg_py_type(&id),
         None => bail!("Expected return type, got None"),
         _ => bail!("Expected Name, got {:?} for return type", returns),
     };
@@ -209,7 +214,7 @@ fn translate_args(args: PyJsonNode) -> anyhow::Result<Vec<Arg>> {
         arg_names.push(Arg {
             arg,
             type_: match annotation.as_deref() {
-                Some(PyJsonNode::Name { id, .. }) => translate_arg_type(id),
+                Some(PyJsonNode::Name { id, .. }) => translate_arg_py_type(id),
                 None => bail!("Expected annotation, got None"),
                 _ => bail!("Expected Name, got {:?} for argument type", annotation),
             },
@@ -219,33 +224,10 @@ fn translate_args(args: PyJsonNode) -> anyhow::Result<Vec<Arg>> {
     Ok(arg_names)
 }
 
-fn translate_arg_type(arg_type: &str) -> ArgType {
+fn translate_arg_py_type(arg_type: &str) -> Type {
     match arg_type {
-        "int" => ArgType::I64,
-        "bool" => ArgType::Bool,
+        "int" => Type::I64,
+        "bool" => Type::Bool,
         _ => panic!("Unsupported type: {}", arg_type),
     }
 }
-
-pub trait TypeToArg {
-    const ARG: ArgType;
-}
-
-macro_rules! impl_type_to_arg {
-    ($t:ty, $l:expr) => {
-        impl TypeToArg for $t {
-            const ARG: ArgType = $l;
-        }
-    };
-    () => {};
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum ArgType {
-    I64,
-    Bool,
-}
-
-impl_type_to_arg!(i64, ArgType::I64);
-impl_type_to_arg!(bool, ArgType::Bool);
