@@ -89,6 +89,17 @@ pub enum PyJsonNode {
         #[serde(flatten)]
         location: Location,
     },
+    If {
+        body: Vec<PyJsonNode>,
+        orelse: Vec<PyJsonNode>,
+        test: Box<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
+    Pass {
+        #[serde(flatten)]
+        location: Location,
+    },
 }
 
 impl PyJsonNode {

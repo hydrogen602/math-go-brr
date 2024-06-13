@@ -9,7 +9,7 @@ use inkwell::{
 };
 
 use crate::{
-    anyhow_500, bail_500, bail_type_err,
+    anyhow_500, bail_400, bail_500, bail_type_err,
     compiler::{
         parser::{self, CompileResult},
         CompileOpts,
@@ -35,6 +35,7 @@ pub struct CodeGen<'ctx, 'm> {
     variables: HashMap<String, VarData<'ctx>>,
 
     tmp_var_counter: u64,
+    block_counter: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -61,10 +62,29 @@ impl<'ctx> Expr<'ctx> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IsTerminal {
+    Terminal,
+    NotTerminal,
+}
+
 impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     fn new_tmp_var_name(&mut self) -> String {
         let name = format!("_tmp_var_{}", self.tmp_var_counter);
         self.tmp_var_counter += 1;
+        name
+    }
+
+    fn new_if_block_name(&mut self) -> (String, String) {
+        let if_name = format!("_if_block_{}", self.block_counter);
+        let else_name = format!("_else_block_{}", self.block_counter);
+        self.block_counter += 1;
+        (if_name, else_name)
+    }
+
+    fn new_generic_block_name(&mut self) -> String {
+        let name = format!("_block_{}", self.block_counter);
+        self.block_counter += 1;
         name
     }
 
@@ -75,6 +95,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             builder: context.create_builder(),
             variables: HashMap::new(),
             tmp_var_counter: 0,
+            block_counter: 0,
         }
     }
 
@@ -162,8 +183,59 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         }
     }
 
-    fn jit_compile_stmt(&mut self, val: StatementAST, return_type: Type) -> CompileResult<()> {
-        match val {
+    /// return true if stmt is terminal like return
+    fn jit_compile_stmt(
+        &mut self,
+        val: StatementAST,
+        return_type: Type,
+        function: FunctionValue<'ctx>,
+        is_conditional: bool,
+    ) -> CompileResult<IsTerminal> {
+        Ok(match val {
+            StatementAST::If {
+                if_block: if_code,
+                else_block: else_code,
+                condition,
+            } => {
+                let condition = self.jit_compile_expr(condition)?;
+
+                let cond = match condition.0 {
+                    Typed::Bool(val) => val,
+                    other => bail_type_err!(Type::Bool, other.into()),
+                };
+
+                let (if_block_name, else_block_name) = self.new_if_block_name();
+                // FIXME: if a var is declared in the if block, it would be accessible in the else block even
+                // if its not initialized, or worse, a garbage pointer
+                // right now its enforced in the code analysis, but we should also enforce it here
+                let if_block = self.context.append_basic_block(function, &if_block_name);
+                let else_block = self.context.append_basic_block(function, &else_block_name);
+
+                let afterwards_block = self
+                    .context
+                    .append_basic_block(function, &self.new_generic_block_name());
+
+                self.builder
+                    .build_conditional_branch(cond, if_block, else_block)?;
+
+                self.builder.position_at_end(if_block);
+                let got_term = self.jit_compile_body(if_code, return_type, function, true)?;
+
+                if got_term == IsTerminal::NotTerminal {
+                    self.builder.build_unconditional_branch(afterwards_block)?;
+                }
+
+                self.builder.position_at_end(else_block);
+                let got_term = self.jit_compile_body(else_code, return_type, function, true)?;
+
+                if got_term == IsTerminal::NotTerminal {
+                    self.builder.build_unconditional_branch(afterwards_block)?;
+                }
+
+                self.builder.position_at_end(afterwards_block);
+
+                IsTerminal::NotTerminal
+            }
             StatementAST::Return(val) => {
                 let val = val.map(|val| self.jit_compile_expr(val)).transpose()?;
 
@@ -180,6 +252,8 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 };
 
                 self.builder.build_return(Some(val.into_dyn()))?;
+
+                IsTerminal::Terminal
             }
             StatementAST::Assign { target, value } => {
                 let existing_var = self.variables.get(&target).cloned();
@@ -207,6 +281,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         }
                     },
                     None => {
+                        if is_conditional {
+                            bail_500!("Cannot declare variables in conditional blocks. This is a bug and should have been caught earlier")
+                        }
+
                         let typed = match value.0 {
                             Typed::I64(value) => {
                                 let ptr = self
@@ -227,22 +305,32 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         self.variables.insert(target, VarData::Var(typed));
                     }
                 }
-            }
-        }
 
-        Ok(())
+                IsTerminal::NotTerminal
+            }
+        })
     }
 
     fn jit_compile_body(
         &mut self,
         body: Vec<StatementAST>,
         return_type: Type,
-    ) -> CompileResult<()> {
+        function: FunctionValue<'ctx>,
+        is_conditional: bool,
+    ) -> CompileResult<IsTerminal> {
         for stmt in body {
-            self.jit_compile_stmt(stmt, return_type)?;
+            let is_terminal = self.jit_compile_stmt(stmt, return_type, function, is_conditional)?;
+
+            // if we hit a terminal statement, we should not continue
+            // as everything else is dead code and llvm is picky about its
+            // control flow
+            if is_terminal == IsTerminal::Terminal {
+                return Ok(IsTerminal::Terminal);
+            }
         }
 
-        Ok(())
+        // If we got here, it means we didn't hit a terminal statement
+        Ok(IsTerminal::NotTerminal)
     }
 
     fn jit_compile_args(
@@ -316,7 +404,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         // Context::ptr
         let ptr_type = self.context.ptr_type(AddressSpace::default());
 
-        let code_analysis = CodeAnalysis::analyze_function(&func);
+        let code_analysis = CodeAnalysis::analyze_function(&func)?;
 
         let FunctionAST {
             name,
@@ -346,7 +434,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
         self.jit_compile_args(args, &function, &code_analysis)?;
 
-        self.jit_compile_body(body, return_type)?;
+        let got_term = self.jit_compile_body(body, return_type, function, false)?;
+
+        if got_term == IsTerminal::NotTerminal {
+            self.jit_compile_stmt(StatementAST::Return(None), return_type, function, false)?;
+        }
 
         if compile_opts.dump_ir {
             eprintln!("");
@@ -371,7 +463,7 @@ struct VariableInfo {
 }
 
 impl CodeAnalysis {
-    fn analyze_function(func: &FunctionAST) -> Self {
+    fn analyze_function(func: &FunctionAST) -> CompileResult<Self> {
         let FunctionAST { args, body, .. } = func;
 
         let mut variable_info: HashMap<String, VariableInfo> = HashMap::new();
@@ -380,19 +472,42 @@ impl CodeAnalysis {
             variable_info.insert(arg.arg.clone(), VariableInfo { is_assigned: false });
         }
 
+        Self::analyze_body(body, &mut variable_info, false)?;
+
+        Ok(Self { variable_info })
+    }
+
+    /// Since variables declared in conditional blocks are accessible outside the block,
+    /// and a conditionally declared variable could lead to dangling pointers or
+    /// uninitialized variables, right now, we do not permit declaring variables in conditional blocks
+    fn analyze_body(
+        body: &Vec<StatementAST>,
+        variable_info: &mut HashMap<String, VariableInfo>,
+        no_declaring_allowed: bool,
+    ) -> CompileResult<()> {
         for stmt in body {
             match stmt {
                 StatementAST::Assign { target, .. } => {
                     if let Some(var) = variable_info.get_mut(target) {
                         var.is_assigned = true;
                     } else {
+                        if no_declaring_allowed {
+                            bail_400!("Cannot declare variables in conditional blocks")
+                        }
                         variable_info.insert(target.clone(), VariableInfo { is_assigned: true });
                     }
                 }
                 StatementAST::Return(_) => {}
+                StatementAST::If {
+                    if_block,
+                    else_block,
+                    ..
+                } => {
+                    Self::analyze_body(if_block, variable_info, true)?;
+                    Self::analyze_body(else_block, variable_info, true)?;
+                }
             }
         }
-
-        Self { variable_info }
+        Ok(())
     }
 }

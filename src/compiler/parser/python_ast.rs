@@ -28,6 +28,11 @@ pub enum StatementAST {
         target: String,
         value: ExpressionAST,
     },
+    If {
+        if_block: Vec<StatementAST>,
+        else_block: Vec<StatementAST>,
+        condition: ExpressionAST,
+    },
 }
 
 #[derive(Debug)]
@@ -180,6 +185,20 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
 
     for node in body {
         match node {
+            PyJsonNode::If {
+                body, orelse, test, ..
+            } => {
+                let condition = translate_expression(*test)?;
+
+                let if_true = translate_body(body)?;
+                let if_false = translate_body(orelse)?;
+
+                statements.push(StatementAST::If {
+                    if_block: if_true,
+                    else_block: if_false,
+                    condition,
+                });
+            }
             PyJsonNode::Return { value, .. } => {
                 statements.push(StatementAST::Return(match value {
                     Some(expr) => Some(translate_expression(*expr)?),
@@ -209,6 +228,9 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
                     target,
                     value: translate_expression(*value)?,
                 });
+            }
+            PyJsonNode::Pass { .. } => {
+                // no-op
             }
             _ => bail!("Unsupported statement: {:?}", node),
         }

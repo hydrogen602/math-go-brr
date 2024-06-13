@@ -23,7 +23,8 @@ impl Signature {
         context_and_module: &ContextAndLLVM,
         py_args: &Bound<'_, PyTuple>,
     ) -> PyResult<Typed<i64, bool>> {
-        let args: Vec<Typed<i64, bool>> = py_args
+        #[allow(unused_mut)] // we pass out pointers to llvm that can be mutated
+        let mut args: Vec<Typed<i64, bool>> = py_args
             .into_iter()
             .zip(self.args.iter())
             .map(|(py_arg, arg_ty)| -> PyResult<Typed<i64, bool>> {

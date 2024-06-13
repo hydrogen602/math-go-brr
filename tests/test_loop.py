@@ -88,3 +88,137 @@ def test_road_to_loops_booleans_errors():
         @brrr
         def foo(a: int) -> bool:
             return a
+
+
+def test_road_to_loops_too_many_segfaults():
+    """
+    I've been getting SIGSEGV or SIGABORTS
+    from bad code generation related to terminal
+    statements in llvm IR.
+    """
+
+    @brrr
+    def foo(a: bool) -> int:
+        b = True
+
+    assert foo(True) == 0
+
+    @brrr
+    def foo(a: bool) -> int:
+        return 42
+
+    assert foo(True) == 42
+
+    # it still has to work no matter where there are return statements or not
+
+    @brrr
+    def foo(a: bool) -> int:
+        if a:
+            return 42
+        else:
+            return -42
+        return 0
+
+    assert foo(True) == 42
+    assert foo(False) == -42
+
+    @brrr
+    def foo(a: bool) -> int:
+        b = 3
+        if a:
+            b = 4
+        else:
+            return -42
+        return 0
+
+    assert foo(True) == 0
+    assert foo(False) == -42
+
+    @brrr
+    def foo(a: bool) -> int:
+        b = 3
+        if a:
+            return 42
+        else:
+            b = 4
+        return 0
+
+    assert foo(True) == 42
+    assert foo(False) == 0
+
+    @brrr
+    def foo(a: bool) -> int:
+        if a:
+            return 42
+        else:
+            return -42
+
+    assert foo(True) == 42
+    assert foo(False) == -42
+
+    @brrr
+    def foo(a: bool) -> int:
+        b = 4
+        if a:
+            b = 1
+        else:
+            return -42
+
+    assert foo(True) == 0
+    assert foo(False) == -42
+
+
+def test_road_to_loops_conditional_flow():
+
+    @brrr(dump_ir=True)
+    def foo(a: bool) -> int:
+        if a:
+            return 42
+        else:
+            return -42
+
+    assert foo(True) == 42
+    assert foo(False) == -42
+
+    @brrr
+    def foo(a: bool) -> int:
+        if a:
+            return 42
+        return -42
+
+    assert foo(True) == 42
+    assert foo(False) == -42
+
+    @brrr
+    def foo(a: bool) -> int:
+        b = 0
+        if a:
+            b = 42
+        return b + 1
+
+    assert foo(True) == 43
+    assert foo(False) == 1
+
+
+def test_road_to_loops_conditional_flow_restrictions():
+    with pytest.raises(SyntaxError):
+
+        # declaring new variables in the if block
+        # makes things very messy and dangling pointers likely
+        @brrr(dump_ast_json=True)
+        def foo(a: bool) -> int:
+            if a:
+                b = 4
+            else:
+                pass
+
+    with pytest.raises(TypeError):
+
+        # b is implicitly declared as i64
+        @brrr
+        def foo(a: bool) -> int:
+            b = 4
+            if a:
+                b = a
+            else:
+                pass

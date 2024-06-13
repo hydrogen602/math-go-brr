@@ -51,6 +51,19 @@ macro_rules! bail_500 {
 }
 
 #[macro_export]
+macro_rules! bail_400 {
+    ($err:expr) => {
+        return ::core::result::Result::Err($crate::compiler::CompileError::ParseError{ msg: ($err).to_string(), location: None })
+    };
+    ($msg:literal $(,)?) => {
+        return ::core::result::Result::Err($crate::compiler::CompileError::ParseError{ msg: ($err).to_string(), location: None })
+    };
+    ($fmt:literal, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::compiler::CompileError::ParseError{ msg: format!($fmt, $($arg)*), location: None })
+    };
+}
+
+#[macro_export]
 macro_rules! bail_type_err {
     ($expected:expr, $got:expr) => {
         return ::core::result::Result::Err($crate::compiler::CompileError::TypeMismatchError {
