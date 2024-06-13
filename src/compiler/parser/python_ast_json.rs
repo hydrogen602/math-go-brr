@@ -100,6 +100,15 @@ pub enum PyJsonNode {
         #[serde(flatten)]
         location: Location,
     },
+    BoolOp {
+        op: Box<PyJsonNode>,
+        values: Vec<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
+    And,
+    Or,
+    Not,
 }
 
 impl PyJsonNode {

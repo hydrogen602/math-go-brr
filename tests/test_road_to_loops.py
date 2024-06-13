@@ -222,3 +222,71 @@ def test_road_to_loops_conditional_flow_restrictions():
                 b = a
             else:
                 pass
+
+
+def test_road_to_loops_bool_ops():
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return a and b
+
+    assert foo(True, True) == True
+    assert foo(True, False) == False
+    assert foo(False, True) == False
+    assert foo(False, False) == False
+
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return a or b
+
+    assert foo(True, True) == True
+    assert foo(True, False) == True
+    assert foo(False, True) == True
+    assert foo(False, False) == False
+
+    @brrr
+    def foo(a: bool) -> bool:
+        return not a
+
+    assert foo(True) == False
+    assert foo(False) == True
+
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return a and not b
+
+    assert foo(True, True) == False
+    assert foo(True, False) == True
+    assert foo(False, True) == False
+    assert foo(False, False) == False
+
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return a or not b
+
+    assert foo(True, True) == True
+    assert foo(True, False) == True
+    assert foo(False, True) == False
+    assert foo(False, False) == True
+
+    @brrr
+    def foo(a: bool, b: bool) -> bool:
+        return not a or b
+
+    assert foo(True, True) == True
+    assert foo(True, False) == False
+    assert foo(False, True) == True
+    assert foo(False, False) == True
+
+    @brrr
+    def foo(a: bool, b: bool, c: bool, d: bool) -> bool:
+        return a and b and c and d
+
+    assert foo(True, True, True, True) == True
+    assert foo(True, True, True, False) == False
+
+    @brrr
+    def foo(a: bool, b: bool, c: bool, d: bool) -> bool:
+        return a and b or c and d
+
+    assert foo(True, True, True, True) == True
+    assert foo(True, True, True, False) == True

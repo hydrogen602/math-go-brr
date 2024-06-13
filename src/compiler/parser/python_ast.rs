@@ -57,12 +57,14 @@ impl fmt::Display for ExpressionAST {
 #[derive(Debug)]
 pub enum UnaryOp {
     USub,
+    Not,
 }
 
 impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnaryOp::USub => write!(f, "-"),
+            UnaryOp::Not => write!(f, "not "),
         }
     }
 }
@@ -83,10 +85,12 @@ impl fmt::Display for ConstantAST {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     Add,
     Sub,
+    And,
+    Or,
 }
 
 impl fmt::Display for BinOp {
@@ -94,6 +98,8 @@ impl fmt::Display for BinOp {
         match self {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
         }
     }
 }
@@ -173,8 +179,30 @@ fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
             let operand = translate_expression(*operand)?;
             match *op {
                 PyJsonNode::USub => Ok(ExpressionAST::UnaryOp(UnaryOp::USub, Box::new(operand))),
+                PyJsonNode::Not => Ok(ExpressionAST::UnaryOp(UnaryOp::Not, Box::new(operand))),
                 _ => bail!("Unsupported unary op: {:?}", op),
             }
+        }
+        PyJsonNode::BoolOp { op, values, .. } => {
+            let values = values
+                .into_iter()
+                .map(|v| translate_expression(v))
+                .collect::<anyhow::Result<Vec<ExpressionAST>>>()?;
+
+            let op = match *op {
+                PyJsonNode::And => BinOp::And,
+                PyJsonNode::Or => BinOp::Or,
+                _ => bail!("Unsupported boolop: {:?}", op),
+            };
+
+            let Some(expr) = values.into_iter().fold(None, |acc, v| match acc {
+                None => Some(v),
+                Some(acc) => Some(ExpressionAST::BinOp(Box::new(acc), op, Box::new(v))),
+            }) else {
+                bail!("Expected at least one value in boolop")
+            };
+
+            Ok(expr)
         }
         _ => bail!("Unsupported expression: {:?}", expr),
     }

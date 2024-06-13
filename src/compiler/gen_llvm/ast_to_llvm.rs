@@ -113,11 +113,23 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     (Typed::I64(lhs), BinOp::Sub, Typed::I64(rhs)) => {
                         Typed::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
                     }
+                    (Typed::Bool(lhs), BinOp::And, Typed::Bool(rhs)) => {
+                        Typed::Bool(self.builder.build_and(lhs, rhs, &name)?)
+                    }
+                    (Typed::Bool(lhs), BinOp::Or, Typed::Bool(rhs)) => {
+                        Typed::Bool(self.builder.build_or(lhs, rhs, &name)?)
+                    }
                     (Typed::Bool(_), BinOp::Add | BinOp::Sub, _) => {
                         bail_type_err!("Add/Sub not supported for bool")
                     }
                     (_, BinOp::Add | BinOp::Sub, Typed::Bool(_)) => {
                         bail_type_err!("Add/Sub not supported for bool")
+                    }
+                    (Typed::I64(_), BinOp::And | BinOp::Or, _) => {
+                        bail_type_err!("And/Or not supported for i64")
+                    }
+                    (_, BinOp::And | BinOp::Or, Typed::I64(_)) => {
+                        bail_type_err!("And/Or not supported for i64")
                     }
                 }))
             }
@@ -175,8 +187,14 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     (Typed::I64(val), parser::python_ast::UnaryOp::USub) => {
                         Typed::I64(self.builder.build_int_neg(val, &name)?)
                     }
+                    (Typed::Bool(val), parser::python_ast::UnaryOp::Not) => {
+                        Typed::Bool(self.builder.build_not(val, &name)?)
+                    }
                     (Typed::Bool(_), parser::python_ast::UnaryOp::USub) => {
                         bail_type_err!("Unary minus on bool not supported")
+                    }
+                    (Typed::I64(_), parser::python_ast::UnaryOp::Not) => {
+                        bail_type_err!("Not on i64 not supported")
                     }
                 }))
             }
