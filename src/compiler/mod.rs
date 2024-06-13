@@ -8,6 +8,7 @@ mod parser;
 mod util;
 
 pub use gen_llvm::{Type, TypeToArg, Typed};
+pub use parser::CompileError;
 
 pub fn parse(py_ast_json: &str) -> anyhow::Result<FunctionAST> {
     let py_ast = PyJsonNode::load_from_str(py_ast_json)?;

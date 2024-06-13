@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, bail};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -10,7 +9,11 @@ use inkwell::{
 };
 
 use crate::{
-    compiler::{parser, CompileOpts},
+    anyhow_500, bail_500, bail_type_err,
+    compiler::{
+        parser::{self, CompileResult},
+        CompileOpts,
+    },
     signature::Signature,
 };
 
@@ -75,7 +78,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         }
     }
 
-    fn jit_compile_expr(&mut self, val: ExpressionAST) -> anyhow::Result<Expr<'ctx>> {
+    fn jit_compile_expr(&mut self, val: ExpressionAST) -> CompileResult<Expr<'ctx>> {
         match val {
             ExpressionAST::BinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
@@ -90,10 +93,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         Typed::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
                     }
                     (Typed::Bool(_), BinOp::Add | BinOp::Sub, _) => {
-                        bail!("Add/Sub not supported for bool")
+                        bail_type_err!("Add/Sub not supported for bool")
                     }
                     (_, BinOp::Add | BinOp::Sub, Typed::Bool(_)) => {
-                        bail!("Add/Sub not supported for bool")
+                        bail_type_err!("Add/Sub not supported for bool")
                     }
                 }))
             }
@@ -103,7 +106,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     .variables
                     .get(&name)
                     .copied()
-                    .ok_or_else(|| anyhow!("Unknown variable: {}", name))?;
+                    .ok_or_else(|| anyhow_500!("Unknown variable: {}", name))?;
 
                 Ok(Expr(match data {
                     VarData::Const(val) => val,
@@ -113,7 +116,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         let BasicValueEnum::IntValue(value) =
                             self.builder.build_load(ty, ptr, &tmp_var)?
                         else {
-                            bail!("Expected IntValue, this is a bug");
+                            bail_500!("Expected IntValue, this is a bug");
                         };
                         Typed::I64(value)
                     }
@@ -123,7 +126,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         let BasicValueEnum::IntValue(value) =
                             self.builder.build_load(ty, ptr, &tmp_var)?
                         else {
-                            bail!("Expected IntValue, this is a bug");
+                            bail_500!("Expected IntValue, this is a bug");
                         };
                         Typed::Bool(value)
                     }
@@ -152,19 +155,28 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         Typed::I64(self.builder.build_int_neg(val, &name)?)
                     }
                     (Typed::Bool(_), parser::python_ast::UnaryOp::USub) => {
-                        bail!("Unary minus on bool not supported")
+                        bail_type_err!("Unary minus on bool not supported")
                     }
                 }))
             }
         }
     }
 
-    fn jit_compile_stmt(&mut self, val: StatementAST) -> anyhow::Result<()> {
+    fn jit_compile_stmt(&mut self, val: StatementAST, return_type: Type) -> CompileResult<()> {
         match val {
             StatementAST::Return(val) => {
+                let val = val.map(|val| self.jit_compile_expr(val)).transpose()?;
+
                 let val = match val {
-                    Some(val) => self.jit_compile_expr(val)?,
-                    None => Typed::I64(self.context.i64_type().const_zero()).into(),
+                    Some(val) => match (return_type, val.0) {
+                        (Type::I64, Typed::I64(_)) => val,
+                        (Type::Bool, Typed::Bool(_)) => val,
+                        (ret_ty, val) => bail_type_err!(ret_ty, val.into()),
+                    },
+                    None => Expr(match return_type {
+                        Type::I64 => Typed::I64(self.context.i64_type().const_zero()).into(),
+                        Type::Bool => Typed::Bool(self.context.bool_type().const_zero()).into(),
+                    }),
                 };
 
                 self.builder.build_return(Some(val.into_dyn()))?;
@@ -177,24 +189,18 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 match existing_var {
                     Some(var) => match var {
                         VarData::Const(_) => {
-                            bail!("Cannot assign to a constant. This is a bug")
+                            bail_500!("Cannot assign to a constant. This is a bug")
                         }
                         VarData::Var(Typed::I64(ptr)) => {
                             let Ok(value) = value.0.into_i64() else {
-                                bail!(
-                                    "Expected i64, but expression returned {}",
-                                    value.0.py_type_name()
-                                )
+                                bail_type_err!(Type::I64, value.0.into())
                             };
 
                             self.builder.build_store(ptr, value)?;
                         }
                         VarData::Var(Typed::Bool(ptr)) => {
                             let Ok(value) = value.0.into_bool() else {
-                                bail!(
-                                    "Expected bool, but expression returned {}",
-                                    value.0.py_type_name()
-                                )
+                                bail_type_err!(Type::Bool, value.0.into())
                             };
 
                             self.builder.build_store(ptr, value)?;
@@ -227,9 +233,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         Ok(())
     }
 
-    fn jit_compile_body(&mut self, body: Vec<StatementAST>) -> anyhow::Result<()> {
+    fn jit_compile_body(
+        &mut self,
+        body: Vec<StatementAST>,
+        return_type: Type,
+    ) -> CompileResult<()> {
         for stmt in body {
-            self.jit_compile_stmt(stmt)?;
+            self.jit_compile_stmt(stmt, return_type)?;
         }
 
         Ok(())
@@ -240,7 +250,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         args: Vec<Arg>,
         function: &FunctionValue<'ctx>,
         code_analysis: &CodeAnalysis,
-    ) -> anyhow::Result<()> {
+    ) -> CompileResult<()> {
         let i64_type = self.context.i64_type();
         let bool_type = self.context.bool_type();
 
@@ -248,11 +258,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             let var_info = code_analysis
                 .variable_info
                 .get(&arg.arg)
-                .ok_or_else(|| anyhow!("Variable info not found. This is a bug"))?;
+                .ok_or_else(|| anyhow_500!("Variable info not found. This is a bug"))?;
 
             let raw_val = function
                 .get_nth_param(i as u32)
-                .ok_or_else(|| anyhow!("Argument count off"))?
+                .ok_or_else(|| anyhow_500!("Argument count off. This is a bug"))?
                 .into_pointer_value();
 
             let x_ptr = match arg.type_ {
@@ -298,7 +308,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         mut self,
         func: FunctionAST,
         compile_opts: CompileOpts,
-    ) -> anyhow::Result<(FunctionValue<'ctx>, Signature)> {
+    ) -> CompileResult<(FunctionValue<'ctx>, Signature)> {
         let i64_type = self.context.i64_type();
         let bool_type = self.context.bool_type();
         // let ptr_type = self.context.ptr_type(6);
@@ -336,7 +346,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
         self.jit_compile_args(args, &function, &code_analysis)?;
 
-        self.jit_compile_body(body)?;
+        self.jit_compile_body(body, return_type)?;
 
         if compile_opts.dump_ir {
             eprintln!("");

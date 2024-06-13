@@ -1,4 +1,5 @@
 from math_go_brrr import brrr
+import pytest
 
 
 def test_road_to_loops_assignment():
@@ -54,3 +55,36 @@ def test_road_to_loops_booleans():
 
     assert foo(False) == True
     assert foo(True) == True
+
+
+def test_road_to_loops_booleans_errors():
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int, b: bool) -> bool:
+            a = b
+            return b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int) -> bool:
+            return a
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool) -> int:
+            return a
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool) -> bool:
+            return 1
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int) -> bool:
+            return a

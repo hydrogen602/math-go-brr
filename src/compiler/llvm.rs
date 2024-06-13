@@ -4,7 +4,11 @@ use inkwell::{
 
 use crate::signature::Signature;
 
-use super::{gen_llvm::CodeGen, parser::python_ast::FunctionAST, util::Ext};
+use super::{
+    gen_llvm::CodeGen,
+    parser::{python_ast::FunctionAST, CompileResult},
+    util::Ext,
+};
 
 #[derive(Debug)]
 /// Note: Context is not thread safe.
@@ -46,7 +50,7 @@ impl<'ctx> LLVMModule<'ctx> {
         &self,
         func: FunctionAST,
         compile_opts: super::CompileOpts,
-    ) -> anyhow::Result<Signature> {
+    ) -> CompileResult<Signature> {
         let codegen = self.new_codegen();
 
         let (_, sig) = codegen.jit_compile_function(func, compile_opts)?;

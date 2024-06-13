@@ -1,9 +1,8 @@
 use core::fmt;
-use std::borrow::Borrow;
 
 use anyhow::{bail, ensure};
 
-use crate::compiler::{gen_llvm::Type, Typed};
+use crate::compiler::gen_llvm::Type;
 
 use super::python_ast_json::PyJsonNode;
 
@@ -39,9 +38,28 @@ pub enum ExpressionAST {
     UnaryOp(UnaryOp, Box<ExpressionAST>),
 }
 
+impl fmt::Display for ExpressionAST {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExpressionAST::BinOp(left, op, right) => write!(f, "({} {} {})", left, op, right),
+            ExpressionAST::Name(name) => write!(f, "{}", name),
+            ExpressionAST::Constant(c) => write!(f, "{}", c),
+            ExpressionAST::UnaryOp(op, operand) => write!(f, "({} {})", op, operand),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum UnaryOp {
     USub,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::USub => write!(f, "-"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -51,10 +69,28 @@ pub enum ConstantAST {
     Bool(bool),
 }
 
+impl fmt::Display for ConstantAST {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConstantAST::I64(i) => write!(f, "{}", i),
+            ConstantAST::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum BinOp {
     Add,
     Sub,
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+        }
+    }
 }
 
 pub fn find_functions_in_module(module: PyJsonNode) -> Vec<PyJsonNode> {

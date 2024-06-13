@@ -1,17 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
-use pyo3::{
-    exceptions::{PyRuntimeError, PyTypeError},
-    prelude::*,
-    types::PyTuple,
-};
+use pyo3::{exceptions::PyRuntimeError, prelude::*, types::PyTuple};
 
 use compiler::{
     llvm::{LLVMJitContext, LLVMModule},
-    Typed,
+    CompileError, Typed,
 };
-use util::Intermediary;
 
 mod compiler;
 mod signature;
@@ -50,26 +45,31 @@ impl From<CompileOpts> for compiler::CompileOpts {
 
 #[pyfunction]
 pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
-    let inner = || -> Result<ContextAndLLVM, Intermediary> {
-        let func = compiler::parse(src)?;
-        let func_name = func.name.clone();
+    // TODO: add location to error & revamp parse error handling
+    let func = compiler::parse(src).map_err(|x| CompileError::ParseError {
+        msg: x.to_string(),
+        location: None,
+    })?;
+    let func_name = func.name.clone();
 
-        let context = AliasableBox::from_unique(Box::new(LLVMJitContext::new()));
-        let module = LLVMModule::new(&context, "test_go_brrr")?;
+    let context = AliasableBox::from_unique(Box::new(LLVMJitContext::new()));
+    let module = LLVMModule::new(&context, "test_go_brrr").map_err(|x| anyhow_500!(x))?;
 
-        let signature = module.compile_func(func, compile_opts.into())?;
+    let signature = match module.compile_func(func, compile_opts.into()) {
+        Ok(sig) => sig,
+        Err(e) => return Err(e.into()),
+    };
 
-        // extend the lifetime of 'ctx to 'static
-        Ok(ContextAndLLVM {
-            module: unsafe { std::mem::transmute(module) },
-            context,
-            func_name,
-            signature,
-        })
+    // extend the lifetime of 'ctx to 'static
+    let ctx_obj = ContextAndLLVM {
+        module: unsafe { std::mem::transmute(module) },
+        context,
+        func_name,
+        signature,
     };
 
     Ok(Func {
-        llvm: Arc::new(Mutex::new(inner()?)),
+        llvm: Arc::new(Mutex::new(ctx_obj)),
     })
 }
 
