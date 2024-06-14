@@ -15,3 +15,32 @@ def bar(a, b):
 ```
 
 Here, `brrr` takes `bar`, gets and parses its source, and then generates an llvm function that does the `add` instructions on two i64s, and then creates a python-callable to replace `bar` that calls the llvm JIT engine.
+
+---
+
+```python
+@brrr
+def foo(a: int) -> int:
+    b = 0
+    i = 0
+    while i < a:
+        b = b + i
+        i = i + 1
+
+    return b
+
+
+start = time()
+llvm_out = foo(10_000_000)
+print(f"LLVM JIT Compiled |", time() - start)
+
+# foo.original_func is our plain-old Python function
+start = time()
+python_out = foo.original_func(10_000_000)
+print(f"Regular Python    |", time() - start)
+```
+Outputs: (On an M1Pro MacBookPro)
+```
+LLVM JIT Compiled | 0.026205062866210938
+Regular Python    | 0.3830869197845459
+```
