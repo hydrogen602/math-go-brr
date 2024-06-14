@@ -126,6 +126,13 @@ pub enum PyJsonNode {
         #[serde(flatten)]
         location: Location,
     },
+    AugAssign {
+        target: Box<PyJsonNode>,
+        op: Box<PyJsonNode>,
+        value: Box<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
 }
 
 impl PyJsonNode {

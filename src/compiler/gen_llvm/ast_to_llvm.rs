@@ -11,7 +11,11 @@ use inkwell::{
 use crate::{
     anyhow_500, bail_400, bail_500, bail_type_err,
     compiler::{
-        parser::{self, python_ast::CompareOp, CompileResult},
+        parser::{
+            self,
+            python_ast::{BoolBinOp, CompareOp},
+            CompileResult,
+        },
         CompileOpts,
     },
     signature::Signature,
@@ -108,6 +112,26 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
     fn jit_compile_expr(&mut self, val: ExpressionAST) -> CompileResult<Expr<'ctx>> {
         match val {
+            ExpressionAST::BoolBinOp(lhs, op, rhs) => {
+                let lhs = self.jit_compile_expr(*lhs)?;
+                let rhs = self.jit_compile_expr(*rhs)?;
+                let name = self.new_tmp_var_name();
+
+                Ok(Expr(match (lhs.0, op, rhs.0) {
+                    (Typed::Bool(lhs), BoolBinOp::And, Typed::Bool(rhs)) => {
+                        Typed::Bool(self.builder.build_and(lhs, rhs, &name)?)
+                    }
+                    (Typed::Bool(lhs), BoolBinOp::Or, Typed::Bool(rhs)) => {
+                        Typed::Bool(self.builder.build_or(lhs, rhs, &name)?)
+                    }
+                    (Typed::I64(_), _, _) => {
+                        bail_type_err!("BoolBinOp not supported for i64")
+                    }
+                    (_, _, Typed::I64(_)) => {
+                        bail_type_err!("BoolBinOp not supported for i64")
+                    }
+                }))
+            }
             ExpressionAST::BinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
                 let rhs = self.jit_compile_expr(*rhs)?;
@@ -120,23 +144,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     (Typed::I64(lhs), BinOp::Sub, Typed::I64(rhs)) => {
                         Typed::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
                     }
-                    (Typed::Bool(lhs), BinOp::And, Typed::Bool(rhs)) => {
-                        Typed::Bool(self.builder.build_and(lhs, rhs, &name)?)
-                    }
-                    (Typed::Bool(lhs), BinOp::Or, Typed::Bool(rhs)) => {
-                        Typed::Bool(self.builder.build_or(lhs, rhs, &name)?)
-                    }
                     (Typed::Bool(_), BinOp::Add | BinOp::Sub, _) => {
                         bail_type_err!("Add/Sub not supported for bool")
                     }
                     (_, BinOp::Add | BinOp::Sub, Typed::Bool(_)) => {
                         bail_type_err!("Add/Sub not supported for bool")
-                    }
-                    (Typed::I64(_), BinOp::And | BinOp::Or, _) => {
-                        bail_type_err!("And/Or not supported for i64")
-                    }
-                    (_, BinOp::And | BinOp::Or, Typed::I64(_)) => {
-                        bail_type_err!("And/Or not supported for i64")
                     }
                 }))
             }

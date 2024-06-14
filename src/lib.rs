@@ -79,7 +79,6 @@ pub fn take_source(
     let func_name = func.name.clone();
 
     let context = AliasableBox::from_unique(Box::new(LLVMJitContext::new()));
-    // TODO: rename module to function's __qualname__ or so
     let module = LLVMModule::new(
         &context,
         &format!("{}_go_brrr", func_name),
@@ -146,6 +145,29 @@ unsafe impl Send for Func {}
 #[pymodule]
 fn math_go_brrr(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(take_source, m)?)?;
+    m.add_function(wrap_pyfunction!(foo, m)?)?;
     m.add_class::<CompileOpts>()?;
     Ok(())
+}
+
+#[pyfunction]
+/// Basic function implemented in just Rust to compare speed differences
+/// @brrr
+/// def foo(a: int) -> int:
+///     b = 0
+///     i = 0
+///     while i < a:
+///         b = b + i
+///         i = i + 1
+///
+///     return b
+pub fn foo(a: i64) -> i64 {
+    let mut b = 0;
+    let mut i = 0;
+    while i < a {
+        b = b + i;
+        i = i + 1;
+    }
+
+    b
 }

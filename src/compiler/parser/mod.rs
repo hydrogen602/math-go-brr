@@ -6,6 +6,7 @@ use super::Type;
 
 pub mod python_ast;
 pub mod python_ast_json;
+pub mod translation;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CompileError {
