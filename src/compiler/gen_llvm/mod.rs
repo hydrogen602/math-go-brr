@@ -1,7 +1,9 @@
 mod ast_to_llvm;
+mod misc_converters;
 use core::fmt;
 
 pub use ast_to_llvm::*;
+use inkwell::{context::Context, values::IntValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Typed<I, B> {
@@ -83,3 +85,35 @@ impl From<Type> for Typed<(), ()> {
 
 impl_type_to_arg!(i64, Type::I64);
 impl_type_to_arg!(bool, Type::Bool);
+
+// single type
+
+#[derive(Debug, Clone, Copy)]
+pub struct Bool<T>(pub T);
+
+impl<'ctx> Bool<IntValue<'ctx>> {
+    pub fn get_true(ctx: &'ctx Context) -> Self {
+        Bool(ctx.bool_type().const_all_ones())
+    }
+
+    pub fn get_false(ctx: &'ctx Context) -> Self {
+        Bool(ctx.bool_type().const_zero())
+    }
+}
+
+impl<I, B> TryFrom<Typed<I, B>> for Bool<B> {
+    type Error = Typed<I, B>;
+
+    fn try_from(value: Typed<I, B>) -> Result<Self, Self::Error> {
+        match value {
+            Typed::Bool(b) => Ok(Bool(b)),
+            other => Err(other),
+        }
+    }
+}
+
+impl<I, B> From<Bool<B>> for Typed<I, B> {
+    fn from(b: Bool<B>) -> Self {
+        Typed::Bool(b.0)
+    }
+}

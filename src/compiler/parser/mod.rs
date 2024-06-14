@@ -65,19 +65,20 @@ macro_rules! bail_400 {
 
 #[macro_export]
 macro_rules! bail_type_err {
-    ($expected:expr, $got:expr) => {
+    ($msg:literal $(,)?) => {
+      return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(
+        ($msg).to_string()))
+    };
+    ($fmt:literal, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(format!($fmt, $($arg)*)))
+    };
+    ($expected:expr => $got:expr) => {
         return ::core::result::Result::Err($crate::compiler::CompileError::TypeMismatchError {
             expected: $expected,
             got: $got,
         })
     };
-    ($msg:literal $(,)?) => {
-        return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(
-          ($msg).to_string()))
-    };
-    ($fmt:literal, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(format!($fmt, $($arg)*)))
-    };
+
 }
 
 // #[macro_export]

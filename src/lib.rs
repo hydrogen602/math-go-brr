@@ -44,7 +44,11 @@ impl From<CompileOpts> for compiler::CompileOpts {
 }
 
 #[pyfunction]
-pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
+pub fn take_source(
+    src: &str,
+    compile_opts: CompileOpts,
+    original_func: Bound<'_, PyAny>,
+) -> PyResult<Func> {
     // TODO: add location to error & revamp parse error handling
     let func = compiler::parse(src).map_err(|x| CompileError::ParseError {
         msg: x.to_string(),
@@ -70,12 +74,15 @@ pub fn take_source(src: &str, compile_opts: CompileOpts) -> PyResult<Func> {
 
     Ok(Func {
         llvm: Arc::new(Mutex::new(ctx_obj)),
+        original_func: original_func.unbind(),
     })
 }
 
-#[pyclass]
+#[pyclass(frozen)]
 pub struct Func {
     llvm: Arc<Mutex<ContextAndLLVM>>,
+    #[pyo3(get)]
+    original_func: Py<PyAny>,
 }
 
 #[pymethods]
@@ -87,17 +94,7 @@ impl Func {
             .lock()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        // TODO: improve with SmallVec<[i64; 5]>
         // TODO: type check - with signature
-        // let mut args: Vec<Typed<i64, bool>> = match py_args
-        //     .into_iter()
-        //     .zip(s.args.iter())
-        //     .map(|py_arg| FromPyObject::extract_bound(&py_arg))
-        //     .collect()
-        // {
-        //     Ok(args) => args,
-        //     Err(e) => return Err(PyTypeError::new_err(e.to_string())),
-        // };
 
         let out = unsafe { lock.signature.call(&lock, py_args) }?;
 

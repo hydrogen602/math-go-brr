@@ -1,5 +1,6 @@
 from math_go_brrr import brrr
 import pytest
+from .util import assert_compatible_for_all, assert_compatible, all_variations_3
 
 
 def test_road_to_loops_assignment():
@@ -290,3 +291,128 @@ def test_road_to_loops_bool_ops():
 
     assert foo(True, True, True, True) == True
     assert foo(True, True, True, False) == True
+
+
+def test_road_to_loops_comparisons():
+    @brrr(dump_ast_json=True)
+    def foo(a: int, b: int) -> bool:
+        return a == b
+
+    assert foo(42, 42) == True
+    assert foo(42, 43) == False
+
+    @brrr
+    def foo(a: int, b: int) -> bool:
+        return a != b
+
+    assert foo(42, 42) == False
+    assert foo(42, 43) == True
+
+    @brrr
+    def foo(a: int, b: int) -> bool:
+        return a < b
+
+    assert foo(42, 42) == False
+    assert foo(42, 43) == True
+    assert foo(43, 42) == False
+
+    @brrr
+    def foo(a: int, b: int) -> bool:
+        return a > b
+
+    assert foo(42, 42) == False
+    assert foo(42, 43) == False
+    assert foo(43, 42) == True
+
+    @brrr
+    def foo(a: int, b: int) -> bool:
+        return a <= b
+
+    assert foo(42, 42) == True
+    assert foo(42, 43) == True
+    assert foo(43, 42) == False
+
+    @brrr
+    def foo(a: int, b: int) -> bool:
+        return a >= b
+
+    assert foo(42, 42) == True
+    assert foo(42, 43) == False
+    assert foo(43, 42) == True
+
+
+def test_road_to_loops_comparisons_chain():
+
+    @brrr
+    def foo(a: int, b: int, c: int) -> bool:
+        return a < b < c
+
+    assert_compatible_for_all(all_variations_3(1, 2, 3), f=foo)
+
+    @brrr
+    def foo(a: int, b: int, c: int) -> bool:
+        return a < b <= c
+
+    assert_compatible_for_all(all_variations_3(1, 2, 3), f=foo)
+
+    @brrr
+    def foo(a: int, b: int, c: int) -> bool:
+        return a >= b < c
+
+    assert_compatible_for_all(all_variations_3(1, 2, 3), f=foo)
+
+    @brrr
+    def foo(a: int, b: int, c: int) -> bool:
+        return a >= b <= c - 1 or a == b
+
+    assert_compatible_for_all(all_variations_3(1, 2, 3), f=foo)
+
+
+def test_road_to_loops_bad_comparisons():
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool, b: bool) -> bool:
+            return a < b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool, b: int) -> bool:
+            return a > b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int, b: bool) -> bool:
+            return a <= b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int, b: int) -> int:
+            return a >= b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int, b: bool) -> bool:
+            return a and b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool, b: int) -> bool:
+            return a or b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: int, b: int) -> bool:
+            return a or b
+
+    with pytest.raises(TypeError):
+
+        @brrr
+        def foo(a: bool, b: bool) -> int:
+            return a and b

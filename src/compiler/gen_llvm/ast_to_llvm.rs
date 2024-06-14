@@ -11,7 +11,7 @@ use inkwell::{
 use crate::{
     anyhow_500, bail_400, bail_500, bail_type_err,
     compiler::{
-        parser::{self, CompileResult},
+        parser::{self, python_ast::CompareOp, CompileResult},
         CompileOpts,
     },
     signature::Signature,
@@ -22,7 +22,7 @@ use super::{
         parser::python_ast::{Arg, BinOp, ConstantAST, ExpressionAST, FunctionAST, StatementAST},
         Type,
     },
-    Typed,
+    Bool, Typed,
 };
 
 /// This is currently for only one function
@@ -198,6 +198,59 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     }
                 }))
             }
+            ExpressionAST::MultiOp(left, rest) => {
+                let mut left = self.jit_compile_expr(*left)?;
+
+                if rest.is_empty() {
+                    bail_500!(
+                        "MultiOp comparison with only one value is not allowed. This is a bug"
+                    );
+                }
+
+                let mut compare_results: Vec<Bool<IntValue<'ctx>>> = Vec::new();
+                for (op, right) in rest {
+                    let right = self.jit_compile_expr(right)?;
+                    let name = self.new_tmp_var_name();
+
+                    compare_results.push(Bool(match (left.0, op, right.0) {
+                        (
+                            Typed::I64(lhs),
+                            CompareOp::Eq
+                            | CompareOp::NotEq
+                            | CompareOp::Gt
+                            | CompareOp::GtE
+                            | CompareOp::Lt
+                            | CompareOp::LtE,
+                            Typed::I64(rhs),
+                        ) => self.builder.build_int_compare(op.into(), lhs, rhs, &name)?,
+                        (Typed::Bool(lhs), CompareOp::Eq | CompareOp::NotEq, Typed::Bool(rhs)) => {
+                            self.builder.build_int_compare(op.into(), lhs, rhs, &name)?
+                        }
+                        (Typed::Bool(_), _, Typed::Bool(_)) => {
+                            bail_type_err!("Cannot apply op {} on bool", op)
+                        }
+                        (Typed::I64(_), _, Typed::Bool(_)) => {
+                            bail_type_err!("Cannot mix types in comparison")
+                        }
+                        (Typed::Bool(_), _, Typed::I64(_)) => {
+                            bail_type_err!("Cannot mix types in comparison")
+                        }
+                    }));
+
+                    left = right;
+                }
+
+                // all conditions are and'ed together
+                Ok(Expr(
+                    compare_results
+                        .into_iter()
+                        .try_fold(Bool::get_true(&self.context), |prev, this| {
+                            let var_name = self.new_tmp_var_name();
+                            self.builder.build_and(prev.0, this.0, &var_name).map(Bool)
+                        })?
+                        .into(),
+                ))
+            }
         }
     }
 
@@ -219,7 +272,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
                 let cond = match condition.0 {
                     Typed::Bool(val) => val,
-                    other => bail_type_err!(Type::Bool, other.into()),
+                    other => bail_type_err!(Type::Bool => other.into()),
                 };
 
                 let (if_block_name, else_block_name) = self.new_if_block_name();
@@ -261,7 +314,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     Some(val) => match (return_type, val.0) {
                         (Type::I64, Typed::I64(_)) => val,
                         (Type::Bool, Typed::Bool(_)) => val,
-                        (ret_ty, val) => bail_type_err!(ret_ty, val.into()),
+                        (ret_ty, val) => bail_type_err!(ret_ty => val.into()),
                     },
                     None => Expr(match return_type {
                         Type::I64 => Typed::I64(self.context.i64_type().const_zero()).into(),
@@ -285,14 +338,14 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         }
                         VarData::Var(Typed::I64(ptr)) => {
                             let Ok(value) = value.0.into_i64() else {
-                                bail_type_err!(Type::I64, value.0.into())
+                                bail_type_err!(Type::I64 => value.0.into())
                             };
 
                             self.builder.build_store(ptr, value)?;
                         }
                         VarData::Var(Typed::Bool(ptr)) => {
                             let Ok(value) = value.0.into_bool() else {
-                                bail_type_err!(Type::Bool, value.0.into())
+                                bail_type_err!(Type::Bool => value.0.into())
                             };
 
                             self.builder.build_store(ptr, value)?;

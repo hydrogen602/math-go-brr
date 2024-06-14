@@ -1,5 +1,3 @@
-// use std::{fs::File, io::BufReader, path::Path};
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -109,6 +107,19 @@ pub enum PyJsonNode {
     And,
     Or,
     Not,
+    Compare {
+        left: Box<PyJsonNode>,
+        ops: Vec<PyJsonNode>,
+        comparators: Vec<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
+    Eq,
+    NotEq,
+    Lt,
+    LtE,
+    Gt,
+    GtE,
 }
 
 impl PyJsonNode {

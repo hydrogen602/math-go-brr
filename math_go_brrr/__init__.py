@@ -1,13 +1,40 @@
 import inspect, ast, ast2json, json, re
-from typing import Callable, Optional
+from typing import Callable, Optional, overload, Protocol, ParamSpec
 from .math_go_brrr import take_source, CompileOpts
 
 
 ACCEPTED_TYPES: frozenset[type] = frozenset([int, bool])
 
 
-def brrr(
-    f: Optional[Callable] = None,
+# class FunctionToGoBrrr[**P, R: int | bool](Protocol):
+#     def __call__(self, *args: P.args) -> R: ...
+
+
+class FunctionGoneBrrr[**P, R: int | bool](Protocol):
+    def __call__(
+        self, *args: P.args  # pyright: ignore[reportGeneralTypeIssues]
+    ) -> R: ...
+
+    @property
+    def original_func(self) -> Callable[P, R]: ...
+
+
+@overload
+def brrr[**P, R: int | bool](f: Callable[P, R]) -> FunctionGoneBrrr[P, R]: ...
+
+
+@overload
+def brrr[
+    **P, R: int | bool
+](
+    *, dump_ir: bool = False, dump_ast: bool = False, dump_ast_json: bool = False
+) -> Callable[[Callable[P, R]], FunctionGoneBrrr[P, R]]: ...
+
+
+def brrr[  # pyright: ignore[reportInconsistentOverload]
+    **P, R: int | bool
+](
+    f: Optional[Callable[P, R]] = None,
     /,
     *,
     dump_ir: bool = False,
@@ -26,7 +53,7 @@ def brrr(
     """
     opts = CompileOpts(dump_ir=dump_ir)
 
-    def inner(f: Callable):
+    def inner(f: Callable) -> FunctionGoneBrrr[P, R]:
         name = getattr(f, "__name__", repr(f))
 
         print(f"make {name} go brrr")
@@ -79,7 +106,7 @@ def brrr(
         if dump_ast_json:
             print(ast_str)
 
-        return take_source(ast_str, opts)
+        return take_source(ast_str, opts, f)
 
     if f is not None:
         return inner(f)

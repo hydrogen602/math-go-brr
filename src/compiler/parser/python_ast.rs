@@ -41,6 +41,7 @@ pub enum ExpressionAST {
     Name(String),
     Constant(ConstantAST),
     UnaryOp(UnaryOp, Box<ExpressionAST>),
+    MultiOp(Box<ExpressionAST>, Vec<(CompareOp, ExpressionAST)>),
 }
 
 impl fmt::Display for ExpressionAST {
@@ -50,6 +51,13 @@ impl fmt::Display for ExpressionAST {
             ExpressionAST::Name(name) => write!(f, "{}", name),
             ExpressionAST::Constant(c) => write!(f, "{}", c),
             ExpressionAST::UnaryOp(op, operand) => write!(f, "({} {})", op, operand),
+            ExpressionAST::MultiOp(expr, pairs) => {
+                write!(f, "({}", expr)?;
+                for (op, expr) in pairs {
+                    write!(f, " {} {}", op, expr)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -64,7 +72,7 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnaryOp::USub => write!(f, "-"),
-            UnaryOp::Not => write!(f, "not "),
+            UnaryOp::Not => write!(f, "not"),
         }
     }
 }
@@ -93,6 +101,20 @@ pub enum BinOp {
     Or,
 }
 
+/// Python is special sometimes
+///
+/// ```a < b``` and ```a + b```
+/// are syntactically different constructs
+#[derive(Debug, Clone, Copy)]
+pub enum CompareOp {
+    Eq,
+    NotEq,
+    Lt,
+    LtE,
+    Gt,
+    GtE,
+}
+
 impl fmt::Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -100,6 +122,19 @@ impl fmt::Display for BinOp {
             BinOp::Sub => write!(f, "-"),
             BinOp::And => write!(f, "and"),
             BinOp::Or => write!(f, "or"),
+        }
+    }
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompareOp::Eq => write!(f, "=="),
+            CompareOp::NotEq => write!(f, "!="),
+            CompareOp::Lt => write!(f, "<"),
+            CompareOp::LtE => write!(f, "<="),
+            CompareOp::Gt => write!(f, ">"),
+            CompareOp::GtE => write!(f, ">="),
         }
     }
 }
@@ -203,6 +238,38 @@ fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
             };
 
             Ok(expr)
+        }
+        PyJsonNode::Compare {
+            left,
+            ops,
+            comparators,
+            ..
+        } => {
+            ensure!(
+                comparators.len() == ops.len(),
+                "Mismatched number of compare ops and comparators: {} vs {}",
+                ops.len(),
+                comparators.len()
+            );
+
+            let left = translate_expression(*left)?;
+            let comparators = comparators.into_iter().map(|c| translate_expression(c));
+            let ops = ops.into_iter().map(|op| match op {
+                PyJsonNode::Eq => Ok(CompareOp::Eq),
+                PyJsonNode::NotEq => Ok(CompareOp::NotEq),
+                PyJsonNode::Lt => Ok(CompareOp::Lt),
+                PyJsonNode::LtE => Ok(CompareOp::LtE),
+                PyJsonNode::Gt => Ok(CompareOp::Gt),
+                PyJsonNode::GtE => Ok(CompareOp::GtE),
+                _ => bail!("Unsupported compare op: {:?}", op),
+            });
+
+            let pairs = ops.zip(comparators).map(|(op, expr)| Ok((op?, expr?)));
+
+            Ok(ExpressionAST::MultiOp(
+                Box::new(left),
+                pairs.collect::<anyhow::Result<_>>()?,
+            ))
         }
         _ => bail!("Unsupported expression: {:?}", expr),
     }
