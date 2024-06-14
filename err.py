@@ -4,19 +4,12 @@ import sys
 
 # try:
 
-try:
 
-    @brrr
-    def foo(a: int) -> int:
-        b = a == 3
-        b = a
-        return a
-
-except TypeError as e:
-    print(e)
-    print(type(e))
-
-    raise
+@brrr
+def foo(a: int) -> int:
+    b = a == 3
+    b = a
+    return a
 
 
 # except TypeError as e:

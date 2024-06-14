@@ -1,5 +1,6 @@
 import inspect, ast, ast2json, json, re
 from typing import Callable, Optional, overload, Protocol, Literal
+from types import TracebackType
 
 from .math_go_brrr import *
 
@@ -125,17 +126,52 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
         if dump_ast_json:
             print(ast_str)
 
+        compile_err = None
+
         try:
-            return take_source(ast_str, opts, f)
+            return take_source(  # pyright: ignore[reportUndefinedVariable]
+                ast_str, opts, f
+            )
+        except CompileTypeError as e:  # pyright: ignore[reportUndefinedVariable]
+            filename = inspect.getsourcefile(f) or "<unknown>"
+            _, f_lineno = inspect.getsourcelines(f)
+
+            location = f.__name__
+            linenumber = e.lineno + f_lineno - 1
+            code = compile(
+                "{}def {}():\n {}1/0".format(
+                    "\n" * (linenumber - 2), location, " " * (e.offset - 2)
+                ),
+                filename,
+                "exec",
+            )
+            namespace = {}
+            exec(code, namespace)
+            location_ref = namespace[location]
+            try:
+                location_ref()
+            except BaseException as fake_e:
+                # here we silence our fake exception but keep the traceback
+                tb = fake_e.__traceback__
+                if tb.tb_next:
+                    tb = tb.tb_next
+                compile_err = TypeError(e.msg).with_traceback(tb)
+
         except Exception as e:
             e.__traceback__ = None
             raise
 
+        if compile_err is not None:
+            raise compile_err
+
     if f is not None:
         try:
             return inner(f)
+        except TypeError as e:
+            e.__traceback__ = e.__traceback__.tb_next.tb_next
+            raise
         except Exception as e:
-            e.__traceback__ = None
+            e.__traceback__ = e.__traceback__.tb_next
             raise
     else:
         # got config
