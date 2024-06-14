@@ -1,15 +1,87 @@
 use core::fmt;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    ops::{Deref, DerefMut},
+};
 
-use crate::compiler::gen_llvm::Type;
+use crate::{compiler::gen_llvm::Type, Location};
 
-use super::python_ast_json::PyJsonNode;
+use super::python_ast_json::{PyJsonNode, PyLocation};
+
+#[derive(Debug)]
+pub struct Located<T> {
+    pub value: T,
+    pub location: Location,
+}
+
+impl<T> Borrow<T> for Located<T> {
+    fn borrow(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> BorrowMut<T> for Located<T> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+}
+
+impl<T> AsRef<T> for Located<T> {
+    fn as_ref(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> AsMut<T> for Located<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+}
+
+impl<T> Deref for Located<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T> DerefMut for Located<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
+    }
+}
+
+pub trait LocatedAdder<L> {
+    fn with_loc(self, location: L) -> Located<Self>
+    where
+        Self: Sized;
+}
+
+impl<T> LocatedAdder<Location> for T {
+    fn with_loc(self, location: Location) -> Located<Self> {
+        Located {
+            value: self,
+            location,
+        }
+    }
+}
+
+impl<T> LocatedAdder<PyLocation> for T {
+    fn with_loc(self, location: PyLocation) -> Located<Self> {
+        Located {
+            value: self,
+            location: location.into(),
+        }
+    }
+}
 
 /// Stricter version (only what we can parse)
 #[derive(Debug)]
 pub struct FunctionAST {
     pub name: String,
     pub args: Vec<Arg>,
-    pub body: Vec<StatementAST>,
+    pub body: Vec<Located<StatementAST>>,
     pub return_type: Type,
 }
 
@@ -21,44 +93,57 @@ pub struct Arg {
 
 #[derive(Debug)]
 pub enum StatementAST {
-    Return(Option<ExpressionAST>),
+    Return(Option<Located<ExpressionAST>>),
     Assign {
         target: String,
-        value: ExpressionAST,
+        value: Located<ExpressionAST>,
     },
     If {
-        if_block: Vec<StatementAST>,
-        else_block: Vec<StatementAST>,
-        condition: ExpressionAST,
+        if_block: Vec<Located<StatementAST>>,
+        else_block: Vec<Located<StatementAST>>,
+        condition: Located<ExpressionAST>,
     },
     While {
-        body: Vec<StatementAST>,
-        condition: ExpressionAST,
+        body: Vec<Located<StatementAST>>,
+        condition: Located<ExpressionAST>,
     },
 }
 
 #[derive(Debug)]
 pub enum ExpressionAST {
-    BinOp(Box<ExpressionAST>, BinOp, Box<ExpressionAST>),
-    BoolBinOp(Box<ExpressionAST>, BoolBinOp, Box<ExpressionAST>),
+    BinOp(
+        Box<Located<ExpressionAST>>,
+        BinOp,
+        Box<Located<ExpressionAST>>,
+    ),
+    BoolBinOp(
+        Box<Located<ExpressionAST>>,
+        BoolBinOp,
+        Box<Located<ExpressionAST>>,
+    ),
     Name(String),
     Constant(ConstantAST),
-    UnaryOp(UnaryOp, Box<ExpressionAST>),
-    MultiOp(Box<ExpressionAST>, Vec<(CompareOp, ExpressionAST)>),
+    UnaryOp(UnaryOp, Box<Located<ExpressionAST>>),
+    MultiOp(
+        Box<Located<ExpressionAST>>,
+        Vec<(CompareOp, Located<ExpressionAST>)>,
+    ),
 }
 
 impl fmt::Display for ExpressionAST {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExpressionAST::BinOp(left, op, right) => write!(f, "({} {} {})", left, op, right),
-            ExpressionAST::BoolBinOp(left, op, right) => write!(f, "({} {} {})", left, op, right),
+            ExpressionAST::BinOp(left, op, right) => write!(f, "({} {} {})", ***left, op, ***right),
+            ExpressionAST::BoolBinOp(left, op, right) => {
+                write!(f, "({} {} {})", ***left, op, ***right)
+            }
             ExpressionAST::Name(name) => write!(f, "{}", name),
             ExpressionAST::Constant(c) => write!(f, "{}", c),
-            ExpressionAST::UnaryOp(op, operand) => write!(f, "({} {})", op, operand),
+            ExpressionAST::UnaryOp(op, operand) => write!(f, "({} {})", op, ***operand),
             ExpressionAST::MultiOp(expr, pairs) => {
-                write!(f, "({}", expr)?;
+                write!(f, "({}", ***expr)?;
                 for (op, expr) in pairs {
-                    write!(f, " {} {}", op, expr)?;
+                    write!(f, " {} {}", op, **expr)?;
                 }
                 write!(f, ")")
             }

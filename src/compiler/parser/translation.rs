@@ -1,8 +1,17 @@
 use anyhow::{anyhow, bail, ensure};
 
-use crate::compiler::gen_llvm::Type;
+use crate::{compiler::gen_llvm::Type, Location};
 
 use super::{python_ast::*, python_ast_json::*};
+
+impl From<PyLocation> for Location {
+    fn from(loc: PyLocation) -> Self {
+        Location {
+            lineno: loc.lineno,
+            offset: loc.col_offset,
+        }
+    }
+}
 
 pub fn find_functions_in_module(module: PyJsonNode) -> Vec<PyJsonNode> {
     let mut functions = vec![];
@@ -50,43 +59,63 @@ pub fn translate_func(func: PyJsonNode) -> anyhow::Result<FunctionAST> {
     })
 }
 
-fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
-    match expr {
+fn translate_expression(expr: PyJsonNode) -> anyhow::Result<Located<ExpressionAST>> {
+    Ok(match expr {
         PyJsonNode::BinOp {
-            left, op, right, ..
-        } => Ok(ExpressionAST::BinOp(
+            left,
+            op,
+            right,
+            location,
+        } => ExpressionAST::BinOp(
             Box::new(translate_expression(*left)?),
             (*op)
                 .try_into()
                 .map_err(|op| anyhow!("Unsupported binop: {:?}", op))?,
             Box::new(translate_expression(*right)?),
-        )),
-        PyJsonNode::Name { id, .. } => Ok(ExpressionAST::Name(id)),
-        PyJsonNode::Constant { value, .. } => match value {
+        )
+        .with_loc(location),
+        PyJsonNode::Name { id, location, ctx } => {
+            ensure!(
+                matches!(*ctx, PyJsonNode::Load),
+                "Expected Load, got {:?}",
+                ctx
+            );
+            ExpressionAST::Name(id).with_loc(location)
+        }
+        PyJsonNode::Constant { value, location } => (match value {
             Some(serde_json::Value::Number(n)) => {
                 if let Some(i) = n.as_i64() {
-                    Ok(ExpressionAST::Constant(ConstantAST::I64(i)))
+                    ExpressionAST::Constant(ConstantAST::I64(i))
                 } else {
                     bail!("TODO: Unsupported number: {:?}", n)
                 }
             }
-            Some(serde_json::Value::Bool(b)) => Ok(ExpressionAST::Constant(ConstantAST::Bool(b))),
+            Some(serde_json::Value::Bool(b)) => ExpressionAST::Constant(ConstantAST::Bool(b)),
             _ => bail!("Unsupported constant: {:?}", value),
-        },
-        PyJsonNode::UnaryOp { op, operand, .. } => {
+        })
+        .with_loc(location),
+        PyJsonNode::UnaryOp {
+            op,
+            operand,
+            location,
+        } => {
             let operand = translate_expression(*operand)?;
 
             let op = (*op)
                 .try_into()
                 .map_err(|op| anyhow!("Unsupported unary op: {:?}", op))?;
 
-            Ok(ExpressionAST::UnaryOp(op, Box::new(operand)))
+            ExpressionAST::UnaryOp(op, Box::new(operand)).with_loc(location)
         }
-        PyJsonNode::BoolOp { op, values, .. } => {
+        PyJsonNode::BoolOp {
+            op,
+            values,
+            location,
+        } => {
             let values = values
                 .into_iter()
                 .map(|v| translate_expression(v))
-                .collect::<anyhow::Result<Vec<ExpressionAST>>>()?;
+                .collect::<anyhow::Result<Vec<_>>>()?;
 
             let op: BoolBinOp = (*op)
                 .try_into()
@@ -94,18 +123,20 @@ fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
 
             let Some(expr) = values.into_iter().fold(None, |acc, v| match acc {
                 None => Some(v),
-                Some(acc) => Some(ExpressionAST::BoolBinOp(Box::new(acc), op, Box::new(v))),
+                Some(acc) => Some(
+                    ExpressionAST::BoolBinOp(Box::new(acc), op, Box::new(v)).with_loc(location),
+                ),
             }) else {
                 bail!("Expected at least one value in boolop")
             };
 
-            Ok(expr)
+            expr
         }
         PyJsonNode::Compare {
             left,
             ops,
             comparators,
-            ..
+            location,
         } => {
             ensure!(
                 comparators.len() == ops.len(),
@@ -123,41 +154,52 @@ fn translate_expression(expr: PyJsonNode) -> anyhow::Result<ExpressionAST> {
 
             let pairs = ops.zip(comparators).map(|(op, expr)| Ok((op?, expr?)));
 
-            Ok(ExpressionAST::MultiOp(
-                Box::new(left),
-                pairs.collect::<anyhow::Result<_>>()?,
-            ))
+            ExpressionAST::MultiOp(Box::new(left), pairs.collect::<anyhow::Result<_>>()?)
+                .with_loc(location)
         }
         _ => bail!("Unsupported expression: {:?}", expr),
-    }
+    })
 }
 
-fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
+fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<Located<StatementAST>>> {
     let mut statements = vec![];
 
     for node in body {
         match node {
             PyJsonNode::If {
-                body, orelse, test, ..
+                body,
+                orelse,
+                test,
+                location,
             } => {
                 let condition = translate_expression(*test)?;
 
                 let if_true = translate_body(body)?;
                 let if_false = translate_body(orelse)?;
 
-                statements.push(StatementAST::If {
-                    if_block: if_true,
-                    else_block: if_false,
-                    condition,
-                });
+                statements.push(
+                    StatementAST::If {
+                        if_block: if_true,
+                        else_block: if_false,
+                        condition,
+                    }
+                    .with_loc(location),
+                );
             }
-            PyJsonNode::Return { value, .. } => {
-                statements.push(StatementAST::Return(match value {
-                    Some(expr) => Some(translate_expression(*expr)?),
-                    None => None,
-                }));
+            PyJsonNode::Return { value, location } => {
+                statements.push(
+                    StatementAST::Return(match value {
+                        Some(expr) => Some(translate_expression(*expr)?),
+                        None => None,
+                    })
+                    .with_loc(location),
+                );
             }
-            PyJsonNode::Assign { targets, value, .. } => {
+            PyJsonNode::Assign {
+                targets,
+                value,
+                location,
+            } => {
                 ensure!(
                     targets.len() == 1,
                     "Only single target assign currently supported"
@@ -176,13 +218,19 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
                     ctx
                 );
 
-                statements.push(StatementAST::Assign {
-                    target,
-                    value: translate_expression(*value)?,
-                });
+                statements.push(
+                    StatementAST::Assign {
+                        target,
+                        value: translate_expression(*value)?,
+                    }
+                    .with_loc(location),
+                );
             }
             PyJsonNode::AugAssign {
-                target, op, value, ..
+                target,
+                op,
+                value,
+                location,
             } => {
                 let PyJsonNode::Name {
                     id: target, ctx, ..
@@ -203,24 +251,32 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
                     .map_err(|op| anyhow!("Unsupported binop: {:?}", op))?;
 
                 let expr = ExpressionAST::BinOp(
-                    Box::new(ExpressionAST::Name(target.clone())),
+                    Box::new(ExpressionAST::Name(target.clone()).with_loc(location)),
                     op,
                     Box::new(value),
-                );
+                )
+                .with_loc(location);
 
-                statements.push(StatementAST::Assign {
-                    target,
-                    value: expr,
-                });
+                statements.push(
+                    StatementAST::Assign {
+                        target,
+                        value: expr,
+                    }
+                    .with_loc(location),
+                );
             }
             PyJsonNode::Pass { .. } => {
                 // no-op
             }
-            PyJsonNode::While { body, test, .. } => {
+            PyJsonNode::While {
+                body,
+                test,
+                location,
+            } => {
                 let condition = translate_expression(*test)?;
                 let body = translate_body(body)?;
 
-                statements.push(StatementAST::While { body, condition });
+                statements.push(StatementAST::While { body, condition }.with_loc(location));
             }
             _ => bail!("Unsupported statement: {:?}", node),
         }

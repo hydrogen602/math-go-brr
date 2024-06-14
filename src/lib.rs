@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use aliasable::boxed::AliasableBox;
 use inkwell::OptimizationLevel;
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
     types::PyTuple,
 };
@@ -147,6 +147,7 @@ fn math_go_brrr(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(take_source, m)?)?;
     m.add_function(wrap_pyfunction!(foo, m)?)?;
     m.add_class::<CompileOpts>()?;
+    m.add_class::<CompileTypeError>()?;
     Ok(())
 }
 
@@ -170,4 +171,45 @@ pub fn foo(a: i64) -> i64 {
     }
 
     b
+}
+
+#[pyclass]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Location {
+    #[pyo3(get)]
+    pub lineno: u64,
+    #[pyo3(get)]
+    pub offset: u64,
+}
+
+#[pyclass(extends=PyTypeError)]
+#[derive(Debug)]
+pub struct CompileTypeError {
+    pub loc: Location,
+    #[pyo3(get)]
+    pub msg: String,
+}
+
+// impl CompileTypeError {
+//     fn new(msg: String, loc: Location) -> Self {
+//         Self { loc, msg }
+//     }
+// }
+
+#[pymethods]
+impl CompileTypeError {
+    #[new]
+    fn new(msg: String, loc: Location) -> Self {
+        Self { loc, msg }
+    }
+
+    #[getter]
+    fn lineno(&self) -> u64 {
+        self.loc.lineno
+    }
+
+    #[getter]
+    fn offset(&self) -> u64 {
+        self.loc.offset
+    }
 }

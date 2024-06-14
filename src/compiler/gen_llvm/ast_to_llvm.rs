@@ -13,12 +13,13 @@ use crate::{
     compiler::{
         parser::{
             self,
-            python_ast::{BoolBinOp, CompareOp},
+            python_ast::{BoolBinOp, CompareOp, Located, LocatedAdder},
             CompileResult,
         },
         CompileOpts,
     },
     signature::Signature,
+    Location,
 };
 
 use super::{
@@ -110,8 +111,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         }
     }
 
-    fn jit_compile_expr(&mut self, val: ExpressionAST) -> CompileResult<Expr<'ctx>> {
-        match val {
+    fn jit_compile_expr(&mut self, val: Located<ExpressionAST>) -> CompileResult<Expr<'ctx>> {
+        let Located { value, location } = val;
+        match value {
             ExpressionAST::BoolBinOp(lhs, op, rhs) => {
                 let lhs = self.jit_compile_expr(*lhs)?;
                 let rhs = self.jit_compile_expr(*rhs)?;
@@ -125,10 +127,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         Typed::Bool(self.builder.build_or(lhs, rhs, &name)?)
                     }
                     (Typed::I64(_), _, _) => {
-                        bail_type_err!("BoolBinOp not supported for i64")
+                        bail_type_err!("BoolBinOp not supported for i64" @ location)
                     }
                     (_, _, Typed::I64(_)) => {
-                        bail_type_err!("BoolBinOp not supported for i64")
+                        bail_type_err!("BoolBinOp not supported for i64" @ location)
                     }
                 }))
             }
@@ -145,10 +147,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         Typed::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
                     }
                     (Typed::Bool(_), BinOp::Add | BinOp::Sub, _) => {
-                        bail_type_err!("Add/Sub not supported for bool")
+                        bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
                     (_, BinOp::Add | BinOp::Sub, Typed::Bool(_)) => {
-                        bail_type_err!("Add/Sub not supported for bool")
+                        bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
                 }))
             }
@@ -210,10 +212,10 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         Typed::Bool(self.builder.build_not(val, &name)?)
                     }
                     (Typed::Bool(_), parser::python_ast::UnaryOp::USub) => {
-                        bail_type_err!("Unary minus on bool not supported")
+                        bail_type_err!("Unary minus on bool not supported" @ location)
                     }
                     (Typed::I64(_), parser::python_ast::UnaryOp::Not) => {
-                        bail_type_err!("Not on i64 not supported")
+                        bail_type_err!("Not on i64 not supported" @ location)
                     }
                 }))
             }
@@ -246,13 +248,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                             self.builder.build_int_compare(op.into(), lhs, rhs, &name)?
                         }
                         (Typed::Bool(_), _, Typed::Bool(_)) => {
-                            bail_type_err!("Cannot apply op {} on bool", op)
+                            bail_type_err!(location, "Cannot apply op {} on bool", op)
                         }
                         (Typed::I64(_), _, Typed::Bool(_)) => {
-                            bail_type_err!("Cannot mix types in comparison")
+                            bail_type_err!("Cannot mix types in comparison" @ location)
                         }
                         (Typed::Bool(_), _, Typed::I64(_)) => {
-                            bail_type_err!("Cannot mix types in comparison")
+                            bail_type_err!("Cannot mix types in comparison" @ location)
                         }
                     }));
 
@@ -276,12 +278,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
     /// return true if stmt is terminal like return
     fn jit_compile_stmt(
         &mut self,
-        val: StatementAST,
+        val: Located<StatementAST>,
         return_type: Type,
         function: FunctionValue<'ctx>,
         is_conditional: bool,
     ) -> CompileResult<IsTerminal> {
-        Ok(match val {
+        let Located { value, location } = val;
+        Ok(match value {
             StatementAST::If {
                 if_block: if_code,
                 else_block: else_code,
@@ -291,7 +294,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
                 let cond = match condition.0 {
                     Typed::Bool(val) => val,
-                    other => bail_type_err!(Type::Bool => other.into()),
+                    other => bail_type_err!(Type::Bool => other.into(), location),
                 };
 
                 let (if_block_name, else_block_name) = self.new_if_block_name();
@@ -333,7 +336,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     Some(val) => match (return_type, val.0) {
                         (Type::I64, Typed::I64(_)) => val,
                         (Type::Bool, Typed::Bool(_)) => val,
-                        (ret_ty, val) => bail_type_err!(ret_ty => val.into()),
+                        (ret_ty, val) => bail_type_err!(ret_ty => val.into(), location),
                     },
                     None => Expr(match return_type {
                         Type::I64 => Typed::I64(self.context.i64_type().const_zero()).into(),
@@ -357,14 +360,14 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                         }
                         VarData::Var(Typed::I64(ptr)) => {
                             let Ok(value) = value.0.into_i64() else {
-                                bail_type_err!(Type::I64 => value.0.into())
+                                bail_type_err!(Type::I64 => value.0.into(), location)
                             };
 
                             self.builder.build_store(ptr, value)?;
                         }
                         VarData::Var(Typed::Bool(ptr)) => {
                             let Ok(value) = value.0.into_bool() else {
-                                bail_type_err!(Type::Bool => value.0.into())
+                                bail_type_err!(Type::Bool => value.0.into(), location)
                             };
 
                             self.builder.build_store(ptr, value)?;
@@ -417,6 +420,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 let b = match self.jit_compile_expr(condition)?.0.into_bool() {
                     Ok(b) => b,
                     Err(t) => bail_type_err!(
+                        location,
                         "Expected bool in while condition but got {}",
                         t.py_type_name()
                     ),
@@ -444,7 +448,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
     fn jit_compile_body(
         &mut self,
-        body: Vec<StatementAST>,
+        body: Vec<Located<StatementAST>>,
         return_type: Type,
         function: FunctionValue<'ctx>,
         is_conditional: bool,
@@ -568,7 +572,14 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         let got_term = self.jit_compile_body(body, return_type, function, false)?;
 
         if got_term == IsTerminal::NotTerminal {
-            self.jit_compile_stmt(StatementAST::Return(None), return_type, function, false)?;
+            self.jit_compile_stmt(
+                // this is default for now cause this is a made-up instructions
+                // so it has no mapping to the source
+                StatementAST::Return(None).with_loc(Location::default()),
+                return_type,
+                function,
+                false,
+            )?;
         }
 
         if compile_opts.dump_ir {
@@ -612,17 +623,22 @@ impl CodeAnalysis {
     /// and a conditionally declared variable could lead to dangling pointers or
     /// uninitialized variables, right now, we do not permit declaring variables in conditional blocks
     fn analyze_body(
-        body: &Vec<StatementAST>,
+        body: &Vec<Located<StatementAST>>,
         variable_info: &mut HashMap<String, VariableInfo>,
         no_declaring_allowed: bool,
     ) -> CompileResult<()> {
-        for stmt in body {
+        for Located {
+            value: stmt,
+            location: _,
+        } in body
+        {
             match stmt {
                 StatementAST::Assign { target, .. } => {
                     if let Some(var) = variable_info.get_mut(target) {
                         var.is_assigned = true;
                     } else {
                         if no_declaring_allowed {
+                            // TODO: attach location info to this
                             bail_400!("Cannot declare variables in conditional blocks")
                         }
                         variable_info.insert(target.clone(), VariableInfo { is_assigned: true });

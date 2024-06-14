@@ -89,15 +89,23 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
 
         for p in params:
             annotation = anno.get(p)
+            if annotation is None:
+                raise TypeError(
+                    f"Argument '{p}' needs to have a type annotation in order to make {name} go brrr"
+                )
             if annotation not in ACCEPTED_TYPES:
                 raise TypeError(
-                    f"Expected parameter {p} to be {nice_accepted_writer()}, but got {annotation} while making {name} go brrr"
+                    f"Argument '{p}' needs to have a type annotation that is {nice_accepted_writer()}, but got {annotation} while making {name} go brrr"
                 )
 
         return_type = sig.return_annotation
+        if return_type is sig.empty:
+            raise TypeError(
+                f"Function needs a return type annotation in order to make {name} go brrr"
+            )
         if return_type not in ACCEPTED_TYPES:
             raise TypeError(
-                f"Expected return type to be {nice_accepted_writer()}, but got {return_type} while making {name} go brrr"
+                f"Function needs a return type that is {nice_accepted_writer()}, but got {return_type} while making {name} go brrr"
             )
 
         code = inspect.getsource(f)
@@ -117,10 +125,18 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
         if dump_ast_json:
             print(ast_str)
 
-        return take_source(ast_str, opts, f)
+        try:
+            return take_source(ast_str, opts, f)
+        except Exception as e:
+            e.__traceback__ = None
+            raise
 
     if f is not None:
-        return inner(f)
+        try:
+            return inner(f)
+        except Exception as e:
+            e.__traceback__ = None
+            raise
     else:
         # got config
         return inner

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Location {
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct PyLocation {
     pub col_offset: u64,
     pub end_col_offset: u64,
     pub end_lineno: u64,
@@ -24,7 +24,7 @@ pub enum PyJsonNode {
         type_comment: Option<Box<PyJsonNode>>,
         type_params: Vec<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     #[serde(rename = "arguments")]
     Arguments {
@@ -41,20 +41,20 @@ pub enum PyJsonNode {
         arg: String,
         annotation: Option<Box<PyJsonNode>>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
         type_comment: Option<Box<PyJsonNode>>,
     },
     Return {
         value: Option<Box<PyJsonNode>>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     BinOp {
         left: Box<PyJsonNode>,
         op: Box<PyJsonNode>,
         right: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     Add,
     Sub,
@@ -62,14 +62,14 @@ pub enum PyJsonNode {
         id: String,
         ctx: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     Load,
     Store,
     Constant {
         value: Option<serde_json::Value>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
         //kind: Option<String>, idk what these are
         //n: Option<i64>,
         //s: Option<i64>,
@@ -78,31 +78,31 @@ pub enum PyJsonNode {
         op: Box<PyJsonNode>,
         operand: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     USub,
     Assign {
         targets: Vec<PyJsonNode>,
         value: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     If {
         body: Vec<PyJsonNode>,
         orelse: Vec<PyJsonNode>,
         test: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     Pass {
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     BoolOp {
         op: Box<PyJsonNode>,
         values: Vec<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     And,
     Or,
@@ -112,7 +112,7 @@ pub enum PyJsonNode {
         ops: Vec<PyJsonNode>,
         comparators: Vec<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     Eq,
     NotEq,
@@ -124,14 +124,14 @@ pub enum PyJsonNode {
         body: Vec<PyJsonNode>,
         test: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
     AugAssign {
         target: Box<PyJsonNode>,
         op: Box<PyJsonNode>,
         value: Box<PyJsonNode>,
         #[serde(flatten)]
-        location: Location,
+        location: PyLocation,
     },
 }
 

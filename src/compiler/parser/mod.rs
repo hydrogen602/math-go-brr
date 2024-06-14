@@ -1,6 +1,8 @@
 use inkwell::builder::BuilderError;
 use pyo3::{exceptions, PyErr};
-use python_ast_json::Location;
+use python_ast_json::PyLocation;
+
+use crate::{CompileTypeError, Location};
 
 use super::Type;
 
@@ -13,12 +15,16 @@ pub enum CompileError {
     #[error("Parse error: {msg}")]
     ParseError {
         msg: String,
-        location: Option<Location>,
+        location: Option<PyLocation>,
     },
     #[error("Type error: expected {expected} but got {got}")]
-    TypeMismatchError { expected: Type, got: Type },
+    TypeMismatchError {
+        expected: Type,
+        got: Type,
+        loc: Location,
+    },
     #[error("Type error: {0}")]
-    TypeInvalidOperationError(String),
+    TypeInvalidOperationError(String, Location),
     #[error("Internal error: {0}")]
     InternalError(anyhow::Error),
 }
@@ -66,17 +72,18 @@ macro_rules! bail_400 {
 
 #[macro_export]
 macro_rules! bail_type_err {
-    ($msg:literal $(,)?) => {
+    ($msg:literal @ $loc:expr) => {
       return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(
-        ($msg).to_string()))
+        ($msg).to_string(), $loc))
     };
-    ($fmt:literal, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(format!($fmt, $($arg)*)))
+    ($loc:expr, $fmt:literal, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::compiler::CompileError::TypeInvalidOperationError(format!($fmt, $($arg)*), $loc))
     };
-    ($expected:expr => $got:expr) => {
+    ($expected:expr => $got:expr, $loc:expr) => {
         return ::core::result::Result::Err($crate::compiler::CompileError::TypeMismatchError {
             expected: $expected,
             got: $got,
+            loc: $loc,
         })
     };
 
@@ -113,10 +120,16 @@ impl From<CompileError> for PyErr {
                 // TODO: proper location setting
                 exceptions::PySyntaxError::new_err(msg)
             }
-            CompileError::TypeMismatchError { expected, got } => {
-                exceptions::PyTypeError::new_err(format!("{} expected, got {}", expected, got))
+            CompileError::TypeMismatchError { expected, got, loc } => {
+                PyErr::new::<CompileTypeError, _>((
+                    format!("{} expected, got {}", expected, got),
+                    loc,
+                ))
+                //exceptions::PyTypeError::new_err(format!("{} expected, got {}", expected, got))
             }
-            CompileError::TypeInvalidOperationError(msg) => exceptions::PyTypeError::new_err(msg),
+            CompileError::TypeInvalidOperationError(msg, loc) => {
+                PyErr::new::<CompileTypeError, _>((msg, loc))
+            }
             CompileError::InternalError(msg) => {
                 exceptions::PyRuntimeError::new_err(msg.to_string())
             }
