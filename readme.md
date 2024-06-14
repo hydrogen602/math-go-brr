@@ -41,6 +41,6 @@ print(f"Regular Python    |", time() - start)
 ```
 Outputs: (On an M1Pro MacBookPro)
 ```
-LLVM JIT Compiled | 0.026205062866210938
-Regular Python    | 0.3830869197845459
+LLVM JIT Compiled | 0.026 sec
+Regular Python    | 0.383 sec
 ```
