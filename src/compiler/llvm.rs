@@ -29,11 +29,13 @@ impl LLVMJitContext {
 }
 
 impl<'ctx> LLVMModule<'ctx> {
-    pub fn new(context: &'ctx LLVMJitContext, module_name: &str) -> anyhow::Result<Self> {
+    pub fn new(
+        context: &'ctx LLVMJitContext,
+        module_name: &str,
+        opt: OptimizationLevel,
+    ) -> anyhow::Result<Self> {
         let module = context.0.create_module(module_name);
-        let execution_engine = module
-            .create_jit_execution_engine(OptimizationLevel::Default)
-            .err_convert()?;
+        let execution_engine = module.create_jit_execution_engine(opt).err_convert()?;
 
         Ok(Self {
             context: &context.0,

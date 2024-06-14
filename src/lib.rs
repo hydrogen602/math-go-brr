@@ -1,7 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use aliasable::boxed::AliasableBox;
-use pyo3::{exceptions::PyRuntimeError, prelude::*, types::PyTuple};
+use inkwell::OptimizationLevel;
+use pyo3::{
+    exceptions::{PyRuntimeError, PyValueError},
+    prelude::*,
+    types::PyTuple,
+};
 
 use compiler::{
     llvm::{LLVMJitContext, LLVMModule},
@@ -23,22 +28,39 @@ struct ContextAndLLVM {
 }
 
 #[pyclass]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct CompileOpts {
     dump_ir: bool,
+    optimization_level: String,
+}
+
+impl CompileOpts {
+    fn get_opt_level(&self) -> PyResult<OptimizationLevel> {
+        match self.optimization_level.as_str() {
+            "none" => Ok(OptimizationLevel::None),
+            "less" => Ok(OptimizationLevel::Less),
+            "default" => Ok(OptimizationLevel::Default),
+            "aggressive" => Ok(OptimizationLevel::Aggressive),
+            _ => Err(PyValueError::new_err("Invalid optimization level")),
+        }
+    }
 }
 
 #[pymethods]
 impl CompileOpts {
     #[new]
-    fn new(dump_ir: bool) -> Self {
-        Self { dump_ir }
+    #[pyo3(signature = (dump_ir, optimization_level="default".to_string()))]
+    fn new(dump_ir: bool, optimization_level: String) -> Self {
+        Self {
+            dump_ir,
+            optimization_level,
+        }
     }
 }
 
 impl From<CompileOpts> for compiler::CompileOpts {
     fn from(opts: CompileOpts) -> Self {
-        let CompileOpts { dump_ir } = opts;
+        let CompileOpts { dump_ir, .. } = opts;
         Self { dump_ir }
     }
 }
@@ -57,7 +79,13 @@ pub fn take_source(
     let func_name = func.name.clone();
 
     let context = AliasableBox::from_unique(Box::new(LLVMJitContext::new()));
-    let module = LLVMModule::new(&context, "test_go_brrr").map_err(|x| anyhow_500!(x))?;
+    // TODO: rename module to function's __qualname__ or so
+    let module = LLVMModule::new(
+        &context,
+        &format!("{}_go_brrr", func_name),
+        compile_opts.get_opt_level()?,
+    )
+    .map_err(|x| anyhow_500!(x))?;
 
     let signature = match module.compile_func(func, compile_opts.into()) {
         Ok(sig) => sig,

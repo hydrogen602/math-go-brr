@@ -1,6 +1,6 @@
 from math_go_brrr import brrr
 import pytest
-from .util import assert_compatible_for_all, assert_compatible, all_variations_3
+from .util import assert_compatible_for_all, all_variations_3
 
 
 def test_road_to_loops_assignment():
@@ -416,3 +416,17 @@ def test_road_to_loops_bad_comparisons():
         @brrr
         def foo(a: bool, b: bool) -> int:
             return a and b
+
+
+def test_loops():
+    @brrr(dump_ast_json=True)
+    def foo(a: int) -> int:
+        b = 0
+        i = 0
+        while i < a:
+            b = b + i
+            i = i + 1
+
+        return b
+
+    assert_compatible_for_all([(e,) for e in range(5)], f=foo)

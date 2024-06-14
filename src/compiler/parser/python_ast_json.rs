@@ -120,6 +120,12 @@ pub enum PyJsonNode {
     LtE,
     Gt,
     GtE,
+    While {
+        body: Vec<PyJsonNode>,
+        test: Box<PyJsonNode>,
+        #[serde(flatten)]
+        location: Location,
+    },
 }
 
 impl PyJsonNode {

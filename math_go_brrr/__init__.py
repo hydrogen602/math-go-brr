@@ -1,7 +1,7 @@
 import inspect, ast, ast2json, json, re
-from typing import Callable, Optional, overload, Protocol, ParamSpec
-from .math_go_brrr import take_source, CompileOpts
+from typing import Callable, Optional, overload, Protocol, Literal
 
+from .math_go_brrr import *
 
 ACCEPTED_TYPES: frozenset[type] = frozenset([int, bool])
 
@@ -27,7 +27,11 @@ def brrr[**P, R: int | bool](f: Callable[P, R]) -> FunctionGoneBrrr[P, R]: ...
 def brrr[
     **P, R: int | bool
 ](
-    *, dump_ir: bool = False, dump_ast: bool = False, dump_ast_json: bool = False
+    *,
+    dump_ir: bool = False,
+    dump_ast: bool = False,
+    dump_ast_json: bool = False,
+    optimization: Literal["none", "less", "default", "aggressive"] = "default",
 ) -> Callable[[Callable[P, R]], FunctionGoneBrrr[P, R]]: ...
 
 
@@ -40,23 +44,30 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
     dump_ir: bool = False,
     dump_ast: bool = False,
     dump_ast_json: bool = False,
+    optimization: Literal["none", "less", "default", "aggressive"] = "default",
 ):
     """
-    Setup so it can both be used like:
-    .. code-block:: python
-    @brrr
-    def foo(): ...
+    A decorator that compiles a function to LLVM IR and JIT compiles it to machine code.
 
-    @brrr(dump_ir=True)
-    def foo(): ...
+    It can either be used directly as a decorator or with keyword arguments to configure the compilation.
+
+    Args:
+        f: The function to compile.
+        dump_ir: Whether to dump the LLVM IR to stderr.
+        dump_ast: Whether to dump the AST to stdout.
+        dump_ast_json: Whether to dump the AST as JSON to stdout.
+        optimization: The optimization level to use. Valid values are "none", "less", "default", and "aggressive".
+
+    Returns:
+        The compiled function. It has a property `original_func` that holds the original Python function.
 
     """
-    opts = CompileOpts(dump_ir=dump_ir)
+    opts = CompileOpts(dump_ir=dump_ir, optimization_level=optimization)
 
     def inner(f: Callable) -> FunctionGoneBrrr[P, R]:
         name = getattr(f, "__name__", repr(f))
 
-        print(f"make {name} go brrr")
+        # print(f"make {name} go brrr")
         if not callable(f):
             raise TypeError(
                 f"Expected a callable, but got {type(f)} while making {name} go brrr"

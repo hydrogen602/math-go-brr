@@ -82,6 +82,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         (if_name, else_name)
     }
 
+    fn new_while_block_name(&mut self) -> (String, String) {
+        let condition_name = format!("_condition_block_{}", self.block_counter);
+        let while_name = format!("_while_block_{}", self.block_counter);
+        self.block_counter += 1;
+        (condition_name, while_name)
+    }
+
     fn new_generic_block_name(&mut self) -> String {
         let name = format!("_block_{}", self.block_counter);
         self.block_counter += 1;
@@ -379,6 +386,47 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
                 IsTerminal::NotTerminal
             }
+            StatementAST::While { body, condition } => {
+                let (condition_name, while_name) = self.new_while_block_name();
+
+                let condition_block = self.context.append_basic_block(function, &condition_name);
+                let while_block = self.context.append_basic_block(function, &while_name);
+
+                let afterwards_block = self
+                    .context
+                    .append_basic_block(function, &self.new_generic_block_name());
+
+                // jump to condition block
+                self.builder.build_unconditional_branch(condition_block)?;
+
+                // move builder to condition block
+                self.builder.position_at_end(condition_block);
+
+                let b = match self.jit_compile_expr(condition)?.0.into_bool() {
+                    Ok(b) => b,
+                    Err(t) => bail_type_err!(
+                        "Expected bool in while condition but got {}",
+                        t.py_type_name()
+                    ),
+                };
+
+                self.builder
+                    .build_conditional_branch(b, while_block, afterwards_block)?;
+
+                // move builder to while block
+                self.builder.position_at_end(while_block);
+
+                let got_term = self.jit_compile_body(body, return_type, function, true)?;
+
+                if got_term == IsTerminal::NotTerminal {
+                    self.builder.build_unconditional_branch(condition_block)?;
+                }
+
+                // move builder to afterwards block
+                self.builder.position_at_end(afterwards_block);
+
+                IsTerminal::NotTerminal
+            }
         })
     }
 
@@ -576,6 +624,9 @@ impl CodeAnalysis {
                 } => {
                     Self::analyze_body(if_block, variable_info, true)?;
                     Self::analyze_body(else_block, variable_info, true)?;
+                }
+                StatementAST::While { body, .. } => {
+                    Self::analyze_body(body, variable_info, true)?;
                 }
             }
         }

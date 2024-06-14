@@ -33,6 +33,10 @@ pub enum StatementAST {
         else_block: Vec<StatementAST>,
         condition: ExpressionAST,
     },
+    While {
+        body: Vec<StatementAST>,
+        condition: ExpressionAST,
+    },
 }
 
 #[derive(Debug)]
@@ -326,6 +330,12 @@ fn translate_body(body: Vec<PyJsonNode>) -> anyhow::Result<Vec<StatementAST>> {
             }
             PyJsonNode::Pass { .. } => {
                 // no-op
+            }
+            PyJsonNode::While { body, test, .. } => {
+                let condition = translate_expression(*test)?;
+                let body = translate_body(body)?;
+
+                statements.push(StatementAST::While { body, condition });
             }
             _ => bail!("Unsupported statement: {:?}", node),
         }
