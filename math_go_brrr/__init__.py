@@ -3,6 +3,7 @@ from typing import Callable, Optional, overload, Protocol, Literal
 from types import TracebackType
 
 from .math_go_brrr import *
+from .synthetic_traceback import generate
 
 ACCEPTED_TYPES: frozenset[type] = frozenset([int, bool])
 
@@ -112,8 +113,10 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
         code = inspect.getsource(f)
 
         m = re.match(r"^([\t ]+)", code)
+        indent_removed = 0
         if m:
             space = m.group(1)
+            indent_removed = len(space)
             code = re.sub(f"^{space}", "", code, flags=re.MULTILINE)
 
         tree = ast.parse(code)
@@ -135,12 +138,18 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
         except CompileTypeError as e:  # pyright: ignore[reportUndefinedVariable]
             filename = inspect.getsourcefile(f) or "<unknown>"
             _, f_lineno = inspect.getsourcelines(f)
+            offset = e.offset + indent_removed
 
             location = f.__name__
             linenumber = e.lineno + f_lineno - 1
+
+            width = 3
             code = compile(
-                "{}def {}():\n {}1/0".format(
-                    "\n" * (linenumber - 2), location, " " * (e.offset - 2)
+                "{}def {}():\n {}1{}/0".format(
+                    "\n" * (linenumber - 2),
+                    location,
+                    " " * (offset - 2),
+                    "0" * max(width - 3, 0),
                 ),
                 filename,
                 "exec",
@@ -150,7 +159,7 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
             location_ref = namespace[location]
             try:
                 location_ref()
-            except BaseException as fake_e:
+            except ZeroDivisionError as fake_e:
                 # here we silence our fake exception but keep the traceback
                 tb = fake_e.__traceback__
                 if tb.tb_next:

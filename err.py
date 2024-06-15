@@ -1,20 +1,34 @@
-from math_go_brrr import brrr
+"""
+This script is a collection of samples for developing useful errors and tracebacks
+"""
+
+from math_go_brrr import brrr, generate
 from types import TracebackType
 import sys
 
-# try:
+
+idx = 0
+if len(sys.argv) >= 2:
+    idx = int(sys.argv[1])
 
 
-@brrr
-def foo(a: int) -> int:
-    b = a == 3
-    b = a
-    return a
+if idx == 0:
+
+    @brrr
+    def foo(a: int) -> int:
+        b = a == 3
+        b = a
+        return a
+
+elif idx == 1:
+
+    @brrr
+    def foo(a: int) -> bool:
+        return a
 
 
-# except TypeError as e:
-#     traceback = e.__traceback__
-#     t = TracebackType(
-#         tb_next=None, tb_frame=traceback.tb_frame, tb_lasti=8, tb_lineno=8
-#     )
-#     raise e.with_traceback(t)
+# elif idx == 2:
+
+#     @brrr
+#     def foo(a: int) -> int:
+#         return a
