@@ -424,8 +424,8 @@ def test_loops():
         b = 0
         i = 0
         while i < a:
-            b = b + i
-            i = i + 1
+            b += i
+            i += 1
 
         return b
 

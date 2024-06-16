@@ -133,6 +133,7 @@ pub enum PyJsonNode {
         #[serde(flatten)]
         location: PyLocation,
     },
+    Mult,
 }
 
 impl PyJsonNode {

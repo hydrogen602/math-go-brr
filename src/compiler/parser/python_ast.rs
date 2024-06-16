@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{
     borrow::{Borrow, BorrowMut},
+    fmt::write,
     ops::{Deref, DerefMut},
 };
 
@@ -198,6 +199,7 @@ impl fmt::Display for ConstantAST {
 pub enum BinOp {
     Add,
     Sub,
+    Mult,
 }
 
 impl TryFrom<PyJsonNode> for BinOp {
@@ -207,6 +209,7 @@ impl TryFrom<PyJsonNode> for BinOp {
         match value {
             PyJsonNode::Add => Ok(BinOp::Add),
             PyJsonNode::Sub => Ok(BinOp::Sub),
+            PyJsonNode::Mult => Ok(BinOp::Mult),
             other => Err(other),
         }
     }
@@ -274,6 +277,7 @@ impl fmt::Display for BinOp {
         match self {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
+            BinOp::Mult => write!(f, "*"),
         }
     }
 }

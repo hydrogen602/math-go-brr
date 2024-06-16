@@ -16,3 +16,11 @@ def test_plus_equals():
         return a
 
     assert_compatible_for_all([(1, 2), (3, 4), (5, 6)], f=foo)
+
+
+def test_mul():
+    @brrr
+    def foo(a: int, b: int) -> int:
+        return a * b
+
+    assert_compatible_for_all([(1, 2), (3, 4), (5, 6)], f=foo)

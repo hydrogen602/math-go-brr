@@ -146,10 +146,13 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     (Typed::I64(lhs), BinOp::Sub, Typed::I64(rhs)) => {
                         Typed::I64(self.builder.build_int_sub(lhs, rhs, &name)?)
                     }
-                    (Typed::Bool(_), BinOp::Add | BinOp::Sub, _) => {
+                    (Typed::I64(lhs), BinOp::Mult, Typed::I64(rhs)) => {
+                        Typed::I64(self.builder.build_int_mul(lhs, rhs, &name)?)
+                    }
+                    (Typed::Bool(_), BinOp::Add | BinOp::Sub | BinOp::Mult, _) => {
                         bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
-                    (_, BinOp::Add | BinOp::Sub, Typed::Bool(_)) => {
+                    (_, BinOp::Add | BinOp::Sub | BinOp::Mult, Typed::Bool(_)) => {
                         bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
                 }))
