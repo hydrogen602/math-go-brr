@@ -143,28 +143,13 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
             location = f.__name__
             linenumber = e.lineno + f_lineno - 1
 
-            width = 3
-            code = compile(
-                "{}def {}():\n {}1{}/0".format(
-                    "\n" * (linenumber - 2),
-                    location,
-                    " " * (offset - 2),
-                    "0" * max(width - 3, 0),
-                ),
-                filename,
-                "exec",
-            )
-            namespace = {}
-            exec(code, namespace)
-            location_ref = namespace[location]
-            try:
-                location_ref()
-            except ZeroDivisionError as fake_e:
-                # here we silence our fake exception but keep the traceback
-                tb = fake_e.__traceback__
-                if tb.tb_next:
-                    tb = tb.tb_next
-                compile_err = TypeError(e.msg).with_traceback(tb)
+            if e.width:
+                width = max(e.width, 3)
+            else:
+                width = 3
+
+            tb = generate(filename, location, linenumber, offset, min(width, 4))
+            compile_err = TypeError(e.msg).with_traceback(tb)
 
         except Exception as e:
             e.__traceback__ = None

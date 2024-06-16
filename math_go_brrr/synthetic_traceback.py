@@ -6,11 +6,15 @@ def generate(
 ) -> TracebackType:
     """
     Note: the generated pointer is min 3 wide.
+
+    Also offsets of 0 are not renderable in the traceback currently
     """
     if width > 1:
         offset += 1
 
     err_generator = "1/" + "0" * max(width - 2, 1)  # "eval('%')"  #
+
+    print("err_generator:", err_generator)
 
     code = compile(
         "{}def {}():\n {}{}".format(

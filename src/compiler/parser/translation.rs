@@ -9,6 +9,7 @@ impl From<PyLocation> for Location {
         Location {
             lineno: loc.lineno,
             offset: loc.col_offset,
+            end_offset: Some(loc.end_col_offset),
         }
     }
 }

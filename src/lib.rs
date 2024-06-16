@@ -180,6 +180,15 @@ pub struct Location {
     pub lineno: u64,
     #[pyo3(get)]
     pub offset: u64,
+    #[pyo3(get)]
+    pub end_offset: Option<u64>,
+}
+
+impl Location {
+    fn with_end_offset(mut self, end_offset: u64) -> Self {
+        self.end_offset = Some(end_offset);
+        self
+    }
 }
 
 #[pyclass(extends=PyTypeError)]
@@ -211,5 +220,10 @@ impl CompileTypeError {
     #[getter]
     fn offset(&self) -> u64 {
         self.loc.offset
+    }
+
+    #[getter]
+    fn width(&self) -> Option<u64> {
+        self.loc.end_offset.map(|end| end - self.loc.offset)
     }
 }
