@@ -1,8 +1,10 @@
 use inkwell::execution_engine::{FunctionLookupError, JitFunction, UnsafeFunctionPointer};
-use pyo3::{exceptions::PyRuntimeError, types::PyTuple, Bound, FromPyObject, PyResult};
+use pyo3::{
+    exceptions::PyRuntimeError, types::PyTuple, Bound, FromPyObject, PyErr, PyResult, Python,
+};
 
 use crate::{
-    compiler::{Type, TypeToArg, Typed},
+    compiler::{JITRuntimeError, RuntimeError, Type, TypeToArg, Typed},
     ContextAndLLVM,
 };
 
@@ -22,6 +24,7 @@ impl Signature {
         &self,
         context_and_module: &ContextAndLLVM,
         py_args: &Bound<'_, PyTuple>,
+        py: Python<'_>,
     ) -> PyResult<Typed<i64, bool>> {
         #[allow(unused_mut)] // we pass out pointers to llvm that can be mutated
         let mut args: Vec<Typed<i64, bool>> = py_args
@@ -41,6 +44,9 @@ impl Signature {
             "Argument count mismatch, this is a bug"
         );
 
+        let error_code: u64 = 0;
+        let error_pointer = &error_code as *const u64 as *mut ();
+
         // Safety: don't call this function with the same arg twice (would create overlapping mut pointers)
         let arg_to_ptr = |idx: usize| match &args[idx] {
             Typed::I64(i) => i as *const i64 as *mut (),
@@ -53,34 +59,40 @@ impl Signature {
             ($ret:ty, $matcher:expr) => {
                 match $matcher {
                     (<$ret>::ARG, 0) => {
-                        let f = Self::call_helper::<unsafe extern "C" fn() -> $ret>(
-                            context_and_module,
-                        )?;
-                        Some(Ok(f.call()))
-                    }
-                    (<$ret>::ARG, 1) => {
                         let f = Self::call_helper::<unsafe extern "C" fn(Ptr) -> $ret>(
                             context_and_module,
                         )?;
-                        Some(Ok(f.call(arg_to_ptr(0))))
+                        Some(Ok(f.call(error_pointer)))
                     }
-                    (<$ret>::ARG, 2) => {
+                    (<$ret>::ARG, 1) => {
                         let f = Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr) -> $ret>(
                             context_and_module,
                         )?;
-                        Some(Ok(f.call(arg_to_ptr(0), arg_to_ptr(1))))
+                        Some(Ok(f.call(error_pointer, arg_to_ptr(0))))
                     }
-                    (<$ret>::ARG, 3) => {
+                    (<$ret>::ARG, 2) => {
                         let f = Self::call_helper::<unsafe extern "C" fn(Ptr, Ptr, Ptr) -> $ret>(
                             context_and_module,
                         )?;
-                        Some(Ok(f.call(arg_to_ptr(0), arg_to_ptr(1), arg_to_ptr(2))))
+                        Some(Ok(f.call(error_pointer, arg_to_ptr(0), arg_to_ptr(1))))
                     }
-                    (<$ret>::ARG, 4) => {
+                    (<$ret>::ARG, 3) => {
                         let f = Self::call_helper::<
                             unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr) -> $ret,
                         >(context_and_module)?;
                         Some(Ok(f.call(
+                            error_pointer,
+                            arg_to_ptr(0),
+                            arg_to_ptr(1),
+                            arg_to_ptr(2),
+                        )))
+                    }
+                    (<$ret>::ARG, 4) => {
+                        let f = Self::call_helper::<
+                            unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr) -> $ret,
+                        >(context_and_module)?;
+                        Some(Ok(f.call(
+                            error_pointer,
                             arg_to_ptr(0),
                             arg_to_ptr(1),
                             arg_to_ptr(2),
@@ -89,9 +101,10 @@ impl Signature {
                     }
                     (<$ret>::ARG, 5) => {
                         let f = Self::call_helper::<
-                            unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr) -> $ret,
+                            unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr, Ptr) -> $ret,
                         >(context_and_module)?;
                         Some(Ok(f.call(
+                            error_pointer,
                             arg_to_ptr(0),
                             arg_to_ptr(1),
                             arg_to_ptr(2),
@@ -101,9 +114,10 @@ impl Signature {
                     }
                     (<$ret>::ARG, 6) => {
                         let f = Self::call_helper::<
-                            unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr, Ptr) -> $ret,
+                            unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr, Ptr, Ptr, Ptr) -> $ret,
                         >(context_and_module)?;
                         Some(Ok(f.call(
+                            error_pointer,
                             arg_to_ptr(0),
                             arg_to_ptr(1),
                             arg_to_ptr(2),
@@ -118,6 +132,11 @@ impl Signature {
         }
 
         if let Some(result) = match_arms_for_return_type!(i64, (self.ret, self.args.len())) {
+            if error_code != 0 {
+                let err = RuntimeError::from_raw_value(error_code);
+                let args = JITRuntimeError::prep_args(err, py);
+                return Err(PyErr::new::<JITRuntimeError, _>(args));
+            }
             return result.map(Typed::I64);
         }
         if let Some(result) = match_arms_for_return_type!(bool, (self.ret, self.args.len())) {

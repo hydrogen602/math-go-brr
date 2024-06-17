@@ -1,7 +1,6 @@
 use core::fmt;
 use std::{
     borrow::{Borrow, BorrowMut},
-    fmt::write,
     ops::{Deref, DerefMut},
 };
 
@@ -200,6 +199,7 @@ pub enum BinOp {
     Add,
     Sub,
     Mult,
+    FloorDiv,
 }
 
 impl TryFrom<PyJsonNode> for BinOp {
@@ -210,6 +210,7 @@ impl TryFrom<PyJsonNode> for BinOp {
             PyJsonNode::Add => Ok(BinOp::Add),
             PyJsonNode::Sub => Ok(BinOp::Sub),
             PyJsonNode::Mult => Ok(BinOp::Mult),
+            PyJsonNode::FloorDiv => Ok(BinOp::FloorDiv),
             other => Err(other),
         }
     }
@@ -278,6 +279,7 @@ impl fmt::Display for BinOp {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
             BinOp::Mult => write!(f, "*"),
+            BinOp::FloorDiv => write!(f, "//"),
         }
     }
 }

@@ -10,7 +10,7 @@ use pyo3::{
 
 use compiler::{
     llvm::{LLVMJitContext, LLVMModule},
-    CompileError, Typed,
+    CompileError, JITRuntimeError, Typed,
 };
 
 mod compiler;
@@ -115,7 +115,7 @@ pub struct Func {
 #[pymethods]
 impl Func {
     #[pyo3(signature = (*py_args))]
-    fn __call__(&self, py_args: &Bound<'_, PyTuple>) -> PyResult<Typed<i64, bool>> {
+    fn __call__(&self, py_args: &Bound<'_, PyTuple>, py: Python<'_>) -> PyResult<Typed<i64, bool>> {
         let lock = self
             .llvm
             .lock()
@@ -123,7 +123,7 @@ impl Func {
 
         // TODO: type check - with signature
 
-        let out = unsafe { lock.signature.call(&lock, py_args) }?;
+        let out = unsafe { lock.signature.call(&lock, py_args, py) }?;
 
         Ok(out)
     }
@@ -148,6 +148,7 @@ fn math_go_brrr(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(foo, m)?)?;
     m.add_class::<CompileOpts>()?;
     m.add_class::<CompileTypeError>()?;
+    m.add_class::<JITRuntimeError>()?;
     Ok(())
 }
 

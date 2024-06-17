@@ -26,6 +26,14 @@ elif idx == 1:
     def foo(a: int) -> bool:
         return a
 
+elif idx == 2:
+
+    @brrr
+    def foo(a: int) -> int:
+        return a // 0
+
+    foo(1)
+
 
 # elif idx == 2:
 

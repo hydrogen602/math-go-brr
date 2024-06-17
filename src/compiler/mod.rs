@@ -7,7 +7,7 @@ pub mod llvm;
 mod parser;
 mod util;
 
-pub use gen_llvm::{Type, TypeToArg, Typed};
+pub use gen_llvm::{JITRuntimeError, RuntimeError, Type, TypeToArg, Typed};
 pub use parser::CompileError;
 
 pub fn parse(py_ast_json: &str) -> anyhow::Result<FunctionAST> {

@@ -27,7 +27,8 @@ use super::{
         parser::python_ast::{Arg, BinOp, ConstantAST, ExpressionAST, FunctionAST, StatementAST},
         Type,
     },
-    Bool, Typed,
+    runtime_err::RuntimeError,
+    Bool, Typed, I64,
 };
 
 /// This is currently for only one function
@@ -41,6 +42,8 @@ pub struct CodeGen<'ctx, 'm> {
 
     tmp_var_counter: u64,
     block_counter: u64,
+
+    err_code: Option<PointerValue<'ctx>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -108,15 +111,57 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             variables: HashMap::new(),
             tmp_var_counter: 0,
             block_counter: 0,
+            err_code: None,
         }
     }
 
-    fn jit_compile_expr(&mut self, val: Located<ExpressionAST>) -> CompileResult<Expr<'ctx>> {
+    /// If err is true, it will set an error pointer and return 0
+    fn jit_compile_error_handling(
+        &mut self,
+        is_err: Bool<IntValue<'ctx>>,
+        function: FunctionValue<'ctx>,
+        err: RuntimeError,
+        return_type: Type,
+    ) -> CompileResult<()> {
+        let (if_block_name, else_block_name) = self.new_if_block_name();
+
+        let if_block = self.context.append_basic_block(function, &if_block_name);
+        let else_block = self.context.append_basic_block(function, &else_block_name);
+
+        self.builder
+            .build_conditional_branch(is_err.0, if_block, else_block)?;
+
+        self.builder.position_at_end(if_block);
+
+        let err_val = I64::from_i64(&self.context, err.into_raw_value() as i64);
+        let err_ptr = self.err_code.ok_or_else(|| {
+            anyhow_500!("Error pointer not set, can't handle errors in this function")
+        })?;
+
+        self.builder.build_store(err_ptr, err_val.0)?;
+
+        let ret_val: Expr = match return_type {
+            Type::I64 => Typed::I64(self.context.i64_type().const_zero()).into(),
+            Type::Bool => Typed::Bool(self.context.bool_type().const_zero()).into(),
+        };
+        self.builder.build_return(Some(ret_val.into_dyn()))?;
+
+        self.builder.position_at_end(else_block);
+
+        Ok(())
+    }
+
+    fn jit_compile_expr(
+        &mut self,
+        val: Located<ExpressionAST>,
+        function: FunctionValue<'ctx>,
+        return_type: Type,
+    ) -> CompileResult<Expr<'ctx>> {
         let Located { value, location } = val;
         match value {
             ExpressionAST::BoolBinOp(lhs, op, rhs) => {
-                let lhs = self.jit_compile_expr(*lhs)?;
-                let rhs = self.jit_compile_expr(*rhs)?;
+                let lhs = self.jit_compile_expr(*lhs, function, return_type)?;
+                let rhs = self.jit_compile_expr(*rhs, function, return_type)?;
                 let name = self.new_tmp_var_name();
 
                 Ok(Expr(match (lhs.0, op, rhs.0) {
@@ -135,8 +180,8 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 }))
             }
             ExpressionAST::BinOp(lhs, op, rhs) => {
-                let lhs = self.jit_compile_expr(*lhs)?;
-                let rhs = self.jit_compile_expr(*rhs)?;
+                let lhs = self.jit_compile_expr(*lhs, function, return_type)?;
+                let rhs = self.jit_compile_expr(*rhs, function, return_type)?;
                 let name = self.new_tmp_var_name();
 
                 Ok(Expr(match (lhs.0, op, rhs.0) {
@@ -149,10 +194,36 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                     (Typed::I64(lhs), BinOp::Mult, Typed::I64(rhs)) => {
                         Typed::I64(self.builder.build_int_mul(lhs, rhs, &name)?)
                     }
-                    (Typed::Bool(_), BinOp::Add | BinOp::Sub | BinOp::Mult, _) => {
+                    (Typed::I64(lhs), BinOp::FloorDiv, Typed::I64(rhs)) => {
+                        let zero = self.context.i64_type().const_zero();
+                        let tmp_var = self.new_tmp_var_name();
+                        let is_err = Bool(self.builder.build_int_compare(
+                            inkwell::IntPredicate::EQ,
+                            rhs,
+                            zero,
+                            &tmp_var,
+                        )?);
+                        self.jit_compile_error_handling(
+                            is_err,
+                            function,
+                            RuntimeError::zero_division_error(location),
+                            return_type,
+                        )?;
+
+                        Typed::I64(self.builder.build_int_signed_div(lhs, rhs, &name)?)
+                    }
+                    (
+                        Typed::Bool(_),
+                        BinOp::Add | BinOp::Sub | BinOp::Mult | BinOp::FloorDiv,
+                        _,
+                    ) => {
                         bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
-                    (_, BinOp::Add | BinOp::Sub | BinOp::Mult, Typed::Bool(_)) => {
+                    (
+                        _,
+                        BinOp::Add | BinOp::Sub | BinOp::Mult | BinOp::FloorDiv,
+                        Typed::Bool(_),
+                    ) => {
                         bail_type_err!("Add/Sub not supported for bool" @ location)
                     }
                 }))
@@ -204,7 +275,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 }
             }
             ExpressionAST::UnaryOp(op, val) => {
-                let val = self.jit_compile_expr(*val)?;
+                let val = self.jit_compile_expr(*val, function, return_type)?;
                 let name = self.new_tmp_var_name();
 
                 Ok(Expr(match (val.0, op) {
@@ -223,7 +294,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 }))
             }
             ExpressionAST::MultiOp(left, rest) => {
-                let mut left = self.jit_compile_expr(*left)?;
+                let mut left = self.jit_compile_expr(*left, function, return_type)?;
 
                 if rest.is_empty() {
                     bail_500!(
@@ -233,7 +304,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
 
                 let mut compare_results: Vec<Bool<IntValue<'ctx>>> = Vec::new();
                 for (op, right) in rest {
-                    let right = self.jit_compile_expr(right)?;
+                    let right = self.jit_compile_expr(right, function, return_type)?;
                     let name = self.new_tmp_var_name();
 
                     compare_results.push(Bool(match (left.0, op, right.0) {
@@ -293,7 +364,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 else_block: else_code,
                 condition,
             } => {
-                let condition = self.jit_compile_expr(condition)?;
+                let condition = self.jit_compile_expr(condition, function, return_type)?;
 
                 let cond = match condition.0 {
                     Typed::Bool(val) => val,
@@ -333,7 +404,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 IsTerminal::NotTerminal
             }
             StatementAST::Return(val) => {
-                let val = val.map(|val| self.jit_compile_expr(val)).transpose()?;
+                let val = val
+                    .map(|val| self.jit_compile_expr(val, function, return_type))
+                    .transpose()?;
 
                 let val = match val {
                     Some(val) => match (return_type, val.0) {
@@ -354,7 +427,7 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             StatementAST::Assign { target, value } => {
                 let existing_var = self.variables.get(&target).cloned();
 
-                let value = self.jit_compile_expr(value)?;
+                let value = self.jit_compile_expr(value, function, return_type)?;
 
                 match existing_var {
                     Some(var) => match var {
@@ -420,7 +493,11 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                 // move builder to condition block
                 self.builder.position_at_end(condition_block);
 
-                let b = match self.jit_compile_expr(condition)?.0.into_bool() {
+                let b = match self
+                    .jit_compile_expr(condition, function, return_type)?
+                    .0
+                    .into_bool()
+                {
                     Ok(b) => b,
                     Err(t) => bail_type_err!(
                         location,
@@ -480,7 +557,16 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
         let i64_type = self.context.i64_type();
         let bool_type = self.context.bool_type();
 
+        // set up error handling pointer
+        let err_code = function
+            .get_nth_param(0)
+            .ok_or_else(|| anyhow_500!("Error handling pointer not found. This is a bug"))?
+            .into_pointer_value();
+        self.err_code = Some(err_code);
+
         for (i, arg) in args.into_iter().enumerate() {
+            let i = i + 1; // first goes to error handling pointer
+
             let var_info = code_analysis
                 .variable_info
                 .get(&arg.arg)
@@ -551,7 +637,9 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
             return_type,
         } = func;
 
-        let mut arg_types_llvm = vec![];
+        // first arg is error handling pointer
+        let mut arg_types_llvm = vec![ptr_type.into()];
+
         let mut arg_types = vec![];
         for arg in &args {
             arg_types_llvm.push(ptr_type.into());

@@ -134,6 +134,7 @@ pub enum PyJsonNode {
         location: PyLocation,
     },
     Mult,
+    FloorDiv,
 }
 
 impl PyJsonNode {

@@ -1,6 +1,7 @@
 import inspect, ast, ast2json, json, re
 from typing import Callable, Optional, overload, Protocol, Literal
 from types import TracebackType
+from functools import wraps
 
 from .math_go_brrr import *
 from .synthetic_traceback import generate
@@ -132,9 +133,33 @@ def brrr[  # pyright: ignore[reportInconsistentOverload]
         compile_err = None
 
         try:
-            return take_source(  # pyright: ignore[reportUndefinedVariable]
+            f_new = take_source(  # pyright: ignore[reportUndefinedVariable]
                 ast_str, opts, f
             )
+
+            class FunctionGoneBrrrImpl:
+                def __call__(self, *args, **kwargs):
+                    run_err = None
+                    try:
+                        return f_new(*args, **kwargs)
+                    except JITRuntimeError as e:
+                        filename = inspect.getsourcefile(f) or "<unknown>"
+                        _, f_lineno = inspect.getsourcelines(f)
+                        offset = e.offset + indent_removed
+                        location = f.__name__
+
+                        linenumber = e.loc.lineno + f_lineno - 1
+
+                        tb = generate(filename, location, linenumber, offset, width=3)
+                        run_err = e.inner_error.with_traceback(tb)
+                    raise run_err
+
+                @property
+                def original_func(self):
+                    return f
+
+            return FunctionGoneBrrrImpl()
+
         except CompileTypeError as e:  # pyright: ignore[reportUndefinedVariable]
             filename = inspect.getsourcefile(f) or "<unknown>"
             _, f_lineno = inspect.getsourcelines(f)

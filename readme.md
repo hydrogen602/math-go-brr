@@ -44,3 +44,27 @@ Outputs: (On an M1Pro MacBookPro)
 LLVM JIT Compiled | 0.026 sec
 Regular Python    | 0.383 sec
 ```
+
+---
+
+# Direction
+
+Priority:
+- [ ] All basic math operations for integers (as i64)
+  - [x] `+`, `-`, `*`
+  - [ ] Division ops: `/`, `//`, `%`
+  - [ ] Power & bitwise: `**`, `<<`, `>>`, `&`, `|`, `^`, `~`
+  - [ ] Augmented assignment for all: e.g. `+=`, `-=`, `*=`, etc.
+- [ ] All basic math operations for floats (as f64)
+- [x] Basic control flow that doesn't rely on python objects (if, while)
+- [x] Booleans, logic operations, and comparisons
+- [ ] Interop with numpy arrays, numpy C-API
+
+Secondary:
+- [ ] Recursion support
+- [ ] Nice error messages
+
+Tertiary:
+- [ ] JIT Functions calling other JIT functions
+- [ ] closures: capturing of numeric variables
+  
