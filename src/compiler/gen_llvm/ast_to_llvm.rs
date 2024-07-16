@@ -210,7 +210,62 @@ impl<'ctx, 'm> CodeGen<'ctx, 'm> {
                             return_type,
                         )?;
 
-                        Typed::I64(self.builder.build_int_signed_div(lhs, rhs, &name)?)
+                        let pos_div_name = self.new_tmp_var_name();
+                        let pos_div = self.builder.build_int_signed_div(lhs, rhs, &pos_div_name)?;
+                        let neg_one_name = self.new_tmp_var_name();
+                        let neg_one = self.builder.build_int_sub(
+                            pos_div,
+                            self.context.i64_type().const_int(1, false),
+                            &neg_one_name,
+                        )?;
+
+                        let is_neg_lhs_name = self.new_tmp_var_name();
+                        let is_neg_lhs = Bool(self.builder.build_int_compare(
+                            inkwell::IntPredicate::SLT,
+                            lhs,
+                            self.context.i64_type().const_zero(),
+                            &is_neg_lhs_name,
+                        )?);
+                        let is_neg_rhs_name = self.new_tmp_var_name();
+                        let is_neg_rhs = Bool(self.builder.build_int_compare(
+                            inkwell::IntPredicate::SLT,
+                            rhs,
+                            self.context.i64_type().const_zero(),
+                            &is_neg_rhs_name,
+                        )?);
+
+                        let is_neg_name = self.new_tmp_var_name();
+                        let is_neg = Bool(self.builder.build_xor(
+                            is_neg_lhs.0,
+                            is_neg_rhs.0,
+                            &is_neg_name,
+                        )?);
+
+                        let rem_name = self.new_tmp_var_name();
+                        let rem = self.builder.build_int_signed_rem(lhs, rhs, &rem_name)?;
+
+                        let rem_is_not_zero_name = self.new_tmp_var_name();
+                        let rem_is_not_zero = Bool(self.builder.build_int_compare(
+                            inkwell::IntPredicate::NE,
+                            rem,
+                            self.context.i64_type().const_zero(),
+                            &rem_is_not_zero_name,
+                        )?);
+
+                        // is the number negative and the remainder is not zero?
+                        let is_neg_and_rem_not_zero_name = self.new_tmp_var_name();
+                        let is_neg_and_rem_not_zero = Bool(self.builder.build_and(
+                            is_neg.0,
+                            rem_is_not_zero.0,
+                            &is_neg_and_rem_not_zero_name,
+                        )?);
+
+                        // signed div rounds towards zero, but py // rounds towards negative infinity
+                        Typed::I64(
+                            self.builder
+                                .build_select(is_neg_and_rem_not_zero.0, neg_one, pos_div, &name)?
+                                .into_int_value(),
+                        )
                     }
                     (
                         Typed::Bool(_),
